@@ -59,7 +59,7 @@ MENU_OPTIONS = [
     "학습 분석·오답노트",
     "공고·캘린더",
     "커리큘럼",
-    "설정",
+    "내 학습 현황",
 ]
 
 DATA_DIR.mkdir(exist_ok=True)
@@ -521,7 +521,7 @@ def answer_from_whitepaper(question: str) -> Tuple[str, List[SearchHit], List[Di
     if not answer or answer.startswith("LLM 호출 실패"):
         if hits:
             preview = "\n\n".join([f"- {hit.text[:420]}..." for hit in hits[:3]])
-            answer = f"### 핵심 답변\nOPENAI_API_KEY가 설정되지 않았거나 LLM 호출이 실패해 검색 요약만 표시합니다.\n\n### 백서 검색 결과\n{preview}\n\n### 확인 필요 사항\n공식 일정·출결·수료·지원 자격은 최신 공지를 기준으로 확인해야 합니다."
+            answer = f"### 핵심 답변\n현재 AI 답변 생성이 원활하지 않아 백서 검색 요약을 먼저 표시합니다.\n\n### 백서 검색 결과\n{preview}\n\n### 확인 필요 사항\n공식 일정·출결·수료·지원 자격은 최신 공지를 기준으로 확인해야 합니다."
         else:
             answer = "백서에서 관련 내용을 찾지 못했습니다. 질문을 더 구체화하거나 백서를 업데이트해야 합니다."
     return answer, hits, links
@@ -876,7 +876,7 @@ def ensure_whitepaper_ready() -> bool:
 
 
 def render_login_page() -> None:
-    hero("AIVLE Navigator 로그인", "백서 기반 학습 어시스턴트를 사용하려면 로그인해야 합니다.")
+    hero("AIVLE Navigator", "백서 기반 학습 어시스턴트에 접속합니다.")
     left, center, right = st.columns([1, 1.1, 1])
     with center:
         st.markdown("### 로그인")
@@ -897,7 +897,7 @@ def render_login_page() -> None:
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
 
-        st.caption("배포 시 Streamlit Secrets에 APP_LOGIN_ID, APP_LOGIN_PASSWORD를 설정하세요.")
+        st.caption("제공받은 계정으로 로그인하세요.")
 
 
 def render_header_metrics() -> None:
@@ -918,7 +918,7 @@ def render_header_metrics() -> None:
 
 def render_sidebar() -> str:
     st.sidebar.markdown("## 🧭 AIVLE Navigator")
-    st.sidebar.caption("로그인됨")
+    st.sidebar.caption("학습자 모드")
     if st.sidebar.button("로그아웃", use_container_width=True):
         st.session_state["authenticated"] = False
         st.session_state["login_error"] = ""
@@ -933,21 +933,21 @@ def render_sidebar() -> str:
     st.session_state["active_page"] = page
     st.sidebar.divider()
 
-    if st.sidebar.button("새 대화 만들기", use_container_width=True):
+    if st.sidebar.button("새 학습 대화", use_container_width=True):
         create_conversation()
         st.rerun()
 
     conversations = load_conversations()
     labels = {cid: f"{conv.get('title', '대화')}" for cid, conv in conversations.items()}
     selected = st.sidebar.selectbox(
-        "대화 목록",
+        "학습 대화 목록",
         options=list(conversations.keys()),
         format_func=lambda cid: labels.get(cid, cid),
         index=list(conversations.keys()).index(current_conversation_id()) if current_conversation_id() in conversations else 0,
     )
     st.session_state.conversation_id = selected
 
-    if st.sidebar.button("현재 대화 삭제", use_container_width=True):
+    if st.sidebar.button("현재 학습 대화 삭제", use_container_width=True):
         data = load_conversations()
         if len(data) <= 1:
             data[selected]["messages"] = []
@@ -959,7 +959,7 @@ def render_sidebar() -> str:
         st.rerun()
 
     st.sidebar.divider()
-    uploaded = st.sidebar.file_uploader("백서 교체", type=["docx"])
+    uploaded = st.sidebar.file_uploader("학습 자료 업로드", type=["docx"])
     if uploaded:
         sig = upload_signature(uploaded)
         if sig != st.session_state.get("last_whitepaper_upload_sig"):
@@ -968,12 +968,9 @@ def render_sidebar() -> str:
             write_whitepaper_meta(uploaded.name, len(payload))
             st.session_state["last_whitepaper_upload_sig"] = sig
             st.cache_resource.clear()
-            st.sidebar.success("백서가 교체되었습니다. 현재 화면에 바로 반영합니다.")
+            st.sidebar.success("학습 자료가 반영되었습니다.")
             st.rerun()
 
-    key_exists = bool(get_api_key())
-    st.sidebar.caption(f"LLM 상태: {'사용 가능' if key_exists else '환경변수/Secrets 미설정'}")
-    st.sidebar.caption("API 키는 파일에 저장하지 않습니다.")
     return page
 
 
@@ -1271,35 +1268,49 @@ def page_curriculum() -> None:
         render_sources(hits)
 
 
-def page_settings() -> None:
-    hero("설정", "백서 파일, API 키 설정 방식, 저장 데이터 상태를 확인합니다.")
-    st.markdown("### 백서")
+def page_learning_status() -> None:
+    hero("내 학습 현황", "저장된 대화, 진단 결과, 오답노트, 일정 현황을 확인합니다.")
+
+    render_header_metrics()
+
+    st.markdown("### 현재 학습 자료")
     meta = read_whitepaper_meta()
-    st.write(f"앱 내부 저장명: `{WHITEPAPER_PATH.name}`")
-    st.write(f"화면 표시명: `{meta.get('display_name', WHITEPAPER_PATH.name)}`")
-    st.write(f"마지막 반영 시각: `{meta.get('updated_at') or '기본 백서'}`")
-    st.write(f"존재 여부: `{WHITEPAPER_PATH.exists()}`")
-    if WHITEPAPER_PATH.exists():
-        st.download_button("현재 백서 다운로드", data=WHITEPAPER_PATH.read_bytes(), file_name=WHITEPAPER_PATH.name, use_container_width=True)
+    display_name = meta.get("display_name") or (WHITEPAPER_PATH.name if WHITEPAPER_PATH.exists() else "없음")
+    updated_at = meta.get("updated_at") or "기본 학습 자료"
+    c1, c2 = st.columns(2)
+    c1.write(f"자료명: `{display_name}`")
+    c2.write(f"반영 시각: `{updated_at}`")
+    st.caption("학습 자료는 질문 답변, 예습 자료, 쪽지시험 생성에 활용됩니다.")
 
-    st.markdown("### API 키")
-    st.markdown(
-        "OPENAI_API_KEY는 코드나 저장소에 넣지 말고 Streamlit Secrets, Hugging Face Space Secrets, 또는 서버 환경변수로 설정하세요."
-    )
-    st.code("OPENAI_API_KEY=sk-...", language="bash")
-    st.write(f"현재 감지 상태: {'설정됨' if get_api_key() else '미설정'}")
+    st.markdown("### 저장된 학습 데이터")
+    conversations = load_conversations()
+    results = read_json(RESULT_PATH, [])
+    wrong_notes = read_json(WRONG_NOTE_PATH, [])
+    calendar_events = read_json(CALENDAR_PATH, [])
 
-    st.markdown("### 로그인 설정")
-    st.markdown("기본값은 `admin / aivle2026`입니다. 배포 시 Secrets에서 반드시 바꾸는 것을 권장합니다.")
-    st.code('APP_LOGIN_ID="admin"\nAPP_LOGIN_PASSWORD="원하는_비밀번호"', language="toml")
+    summary_rows = [
+        ["학습 대화", len(conversations), "이전 질문과 답변을 이어서 확인"],
+        ["진단 기록", len(results), "쪽지시험 결과와 수준 판별 기록"],
+        ["오답노트", len(wrong_notes), "틀린 문제와 해설 복습"],
+        ["등록 일정", len(calendar_events), "수업·스터디·마감 일정 관리"],
+    ]
+    st.dataframe(pd.DataFrame(summary_rows, columns=["항목", "개수", "활용"]), hide_index=True, use_container_width=True)
 
-    st.markdown("### 저장 데이터")
-    for path in [CONVERSATION_PATH, RESULT_PATH, WRONG_NOTE_PATH, CALENDAR_PATH]:
-        size = path.stat().st_size if path.exists() else 0
-        st.write(f"`{path.name}` · {size} bytes")
-    if st.button("캐시 초기화", use_container_width=True):
-        st.cache_resource.clear()
-        st.success("캐시가 초기화되었습니다.")
+    st.markdown("### 최근 진단 기록")
+    if results:
+        result_df = pd.DataFrame(results)
+        display_cols = [col for col in ["created_at", "topic", "level", "score", "total"] if col in result_df.columns]
+        st.dataframe(result_df[display_cols].tail(10), hide_index=True, use_container_width=True)
+    else:
+        st.info("아직 저장된 진단 기록이 없습니다.")
+
+    st.markdown("### 최근 일정")
+    if calendar_events:
+        event_df = pd.DataFrame(calendar_events)
+        display_cols = [col for col in ["date", "kind", "title", "note"] if col in event_df.columns]
+        st.dataframe(event_df[display_cols].tail(10), hide_index=True, use_container_width=True)
+    else:
+        st.info("아직 등록된 일정이 없습니다.")
 
 
 def main() -> None:
@@ -1324,7 +1335,7 @@ def main() -> None:
     elif page == "커리큘럼":
         page_curriculum()
     else:
-        page_settings()
+        page_learning_status()
 
 
 if __name__ == "__main__":
