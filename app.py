@@ -94,6 +94,9 @@ st.markdown(
         border-radius: 18px;
         box-shadow: 0 10px 24px rgba(15,23,42,.06);
     }
+    div[data-testid="stMetric"] * {
+        color: #111827 !important;
+    }
     .hero {
         border: 1px solid rgba(37,99,235,.18);
         background: radial-gradient(circle at 0% 0%, rgba(59,130,246,.18), transparent 38%),
@@ -883,8 +886,8 @@ def render_sidebar() -> str:
         "메뉴",
         MENU_OPTIONS,
         index=MENU_OPTIONS.index(st.session_state.get("active_page", "대시보드")),
-        key="active_page",
     )
+    st.session_state["active_page"] = page
     st.sidebar.divider()
 
     if st.sidebar.button("새 대화 만들기", use_container_width=True):
