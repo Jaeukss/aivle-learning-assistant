@@ -99,12 +99,13 @@ st.markdown(
     div[data-testid="stMetric"] * {
         color: #111827 !important;
     }
-    header [data-testid="stToolbar"],
-    [data-testid="stToolbar"],
-    .stDeployButton {
-        display: none !important;
-        visibility: hidden !important;
-        height: 0 !important;
+    /* Streamlit 헤더 전체를 숨기면 사이드바 열기/닫기 버튼까지 사라질 수 있어 숨기지 않습니다. */
+    section[data-testid="stSidebar"] {
+        background: #0f172a !important;
+        min-width: 18rem;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #e5e7eb;
     }
     .hero {
         border: 1px solid rgba(37,99,235,.18);

@@ -51,3 +51,8 @@ OPENAI_MODEL = "gpt-4o-mini"
 ## 보안 메모
 
 업로드한 `api_key.txt`는 패키지에 포함하지 않았습니다. 실제 키가 외부에 노출되었다면 OpenAI, Hugging Face, SendGrid 콘솔에서 즉시 폐기·재발급하세요.
+
+
+## v5 변경 사항
+- Streamlit 헤더를 강제로 숨기던 CSS를 제거해 사이드바가 다시 보이도록 수정했습니다.
+- 사용자 화면 기준으로 관리자용 설정 문구는 제거했습니다.
