@@ -22,8 +22,18 @@ streamlit run app.py
 
 Streamlit Cloud 또는 Hugging Face Spaces에서는 `OPENAI_API_KEY`를 Secrets에 등록하세요. API 키를 코드에 직접 넣지 마세요.
 
+로그인 기본값은 `admin / aivle2026`입니다. 배포 시 Secrets에서 아래 값을 반드시 바꾸는 것을 권장합니다.
+
+```toml
+APP_LOGIN_ID = "admin"
+APP_LOGIN_PASSWORD = "원하는_비밀번호"
+OPENAI_API_KEY = "sk-..."
+OPENAI_MODEL = "gpt-4o-mini"
+```
+
 ## 구현 기능
 
+- 로그인 페이지
 - 추천 질문 / 빠른 질문 버튼
 - 백서 기반 학습 질의응답
 - 주차·주제별 예습 자료 생성

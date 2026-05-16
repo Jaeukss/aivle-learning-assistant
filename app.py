@@ -4,6 +4,7 @@ import json
 import os
 import re
 import uuid
+import hmac
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -48,6 +49,16 @@ CALENDAR_PATH = STORE_DIR / "calendar_events.json"
 APP_TITLE = "AIVLE Navigator"
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 EMBEDLESS_TOP_K = 6
+
+MENU_OPTIONS = [
+    "대시보드",
+    "학습 질의",
+    "예습·쪽지시험",
+    "학습 분석·오답노트",
+    "공고·캘린더",
+    "커리큘럼",
+    "설정",
+]
 
 DATA_DIR.mkdir(exist_ok=True)
 STORE_DIR.mkdir(exist_ok=True)
@@ -232,13 +243,36 @@ def write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def get_api_key() -> Optional[str]:
-    key = None
+def get_config_value(name: str, default: Optional[str] = None) -> Optional[str]:
+    value = None
     try:
-        key = st.secrets.get("OPENAI_API_KEY")
+        value = st.secrets.get(name)
     except Exception:
-        key = None
-    return key or os.getenv("OPENAI_API_KEY")
+        value = None
+    return value or os.getenv(name) or default
+
+
+def get_api_key() -> Optional[str]:
+    return get_config_value("OPENAI_API_KEY")
+
+
+def get_login_credentials() -> Tuple[str, str]:
+    login_id = get_config_value("APP_LOGIN_ID", "admin") or "admin"
+    login_password = get_config_value("APP_LOGIN_PASSWORD", "aivle2026") or "aivle2026"
+    return login_id, login_password
+
+
+def init_session_defaults() -> None:
+    st.session_state.setdefault("authenticated", False)
+    st.session_state.setdefault("login_error", "")
+    st.session_state.setdefault("active_page", "대시보드")
+    if st.session_state["active_page"] not in MENU_OPTIONS:
+        st.session_state["active_page"] = "대시보드"
+
+
+def authenticate(login_id: str, login_password: str) -> bool:
+    expected_id, expected_password = get_login_credentials()
+    return hmac.compare_digest(login_id, expected_id) and hmac.compare_digest(login_password, expected_password)
 
 
 def get_client() -> Optional[Any]:
@@ -799,6 +833,31 @@ def ensure_whitepaper_ready() -> bool:
     return False
 
 
+def render_login_page() -> None:
+    hero("AIVLE Navigator 로그인", "백서 기반 학습 어시스턴트를 사용하려면 로그인해야 합니다.")
+    left, center, right = st.columns([1, 1.1, 1])
+    with center:
+        st.markdown("### 로그인")
+        with st.form("login_form", clear_on_submit=False):
+            login_id = st.text_input("아이디")
+            login_password = st.text_input("비밀번호", type="password")
+            submitted = st.form_submit_button("로그인", use_container_width=True)
+
+        if submitted:
+            if authenticate(login_id.strip(), login_password):
+                st.session_state["authenticated"] = True
+                st.session_state["login_error"] = ""
+                st.session_state["active_page"] = "대시보드"
+                st.rerun()
+            else:
+                st.session_state["login_error"] = "아이디 또는 비밀번호가 일치하지 않습니다."
+
+        if st.session_state.get("login_error"):
+            st.error(st.session_state["login_error"])
+
+        st.caption("배포 시 Streamlit Secrets에 APP_LOGIN_ID, APP_LOGIN_PASSWORD를 설정하세요.")
+
+
 def render_header_metrics() -> None:
     index = load_index()
     chunk_count = len(index["chunks"]) if index else 0
@@ -813,9 +872,18 @@ def render_header_metrics() -> None:
 
 def render_sidebar() -> str:
     st.sidebar.markdown("## 🧭 AIVLE Navigator")
+    st.sidebar.caption("로그인됨")
+    if st.sidebar.button("로그아웃", use_container_width=True):
+        st.session_state["authenticated"] = False
+        st.session_state["login_error"] = ""
+        st.rerun()
+
+    st.sidebar.divider()
     page = st.sidebar.radio(
         "메뉴",
-        ["대시보드", "학습 질의", "예습·쪽지시험", "학습 분석·오답노트", "공고·캘린더", "커리큘럼", "설정"],
+        MENU_OPTIONS,
+        index=MENU_OPTIONS.index(st.session_state.get("active_page", "대시보드")),
+        key="active_page",
     )
     st.sidebar.divider()
 
@@ -885,15 +953,15 @@ def page_dashboard() -> None:
     with col1:
         if st.button("질문으로 시작", use_container_width=True):
             st.session_state["pending_chat"] = "에이블스쿨 전체 학습 흐름을 요약해줘"
-            st.session_state["force_page"] = "학습 질의"
+            st.session_state["active_page"] = "학습 질의"
             st.rerun()
     with col2:
         if st.button("예습 자료 만들기", use_container_width=True):
-            st.session_state["force_page"] = "예습·쪽지시험"
+            st.session_state["active_page"] = "예습·쪽지시험"
             st.rerun()
     with col3:
         if st.button("캘린더 보기", use_container_width=True):
-            st.session_state["force_page"] = "공고·캘린더"
+            st.session_state["active_page"] = "공고·캘린더"
             st.rerun()
 
 
@@ -1166,6 +1234,10 @@ def page_settings() -> None:
     st.code("OPENAI_API_KEY=sk-...", language="bash")
     st.write(f"현재 감지 상태: {'설정됨' if get_api_key() else '미설정'}")
 
+    st.markdown("### 로그인 설정")
+    st.markdown("기본값은 `admin / aivle2026`입니다. 배포 시 Secrets에서 반드시 바꾸는 것을 권장합니다.")
+    st.code('APP_LOGIN_ID="admin"\nAPP_LOGIN_PASSWORD="원하는_비밀번호"', language="toml")
+
     st.markdown("### 저장 데이터")
     for path in [CONVERSATION_PATH, RESULT_PATH, WRONG_NOTE_PATH, CALENDAR_PATH]:
         size = path.stat().st_size if path.exists() else 0
@@ -1176,10 +1248,13 @@ def page_settings() -> None:
 
 
 def main() -> None:
+    init_session_defaults()
+
+    if not st.session_state.get("authenticated"):
+        render_login_page()
+        return
+
     page = render_sidebar()
-    forced = st.session_state.pop("force_page", None)
-    if forced:
-        page = forced
 
     if page == "대시보드":
         page_dashboard()
