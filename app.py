@@ -5,6 +5,7 @@ import os
 import re
 import uuid
 import hmac
+import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -45,6 +46,7 @@ CONVERSATION_PATH = STORE_DIR / "conversations.json"
 RESULT_PATH = STORE_DIR / "study_results.json"
 WRONG_NOTE_PATH = STORE_DIR / "wrong_notes.json"
 CALENDAR_PATH = STORE_DIR / "calendar_events.json"
+WHITEPAPER_META_PATH = STORE_DIR / "whitepaper_meta.json"
 
 APP_TITLE = "AIVLE Navigator"
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -96,6 +98,13 @@ st.markdown(
     }
     div[data-testid="stMetric"] * {
         color: #111827 !important;
+    }
+    header [data-testid="stToolbar"],
+    [data-testid="stToolbar"],
+    .stDeployButton {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
     }
     .hero {
         border: 1px solid rgba(37,99,235,.18);
@@ -265,10 +274,40 @@ def get_login_credentials() -> Tuple[str, str]:
     return login_id, login_password
 
 
+def read_whitepaper_meta() -> Dict[str, Any]:
+    default = {
+        "display_name": WHITEPAPER_PATH.name,
+        "updated_at": "",
+        "size_bytes": WHITEPAPER_PATH.stat().st_size if WHITEPAPER_PATH.exists() else 0,
+    }
+    data = read_json(WHITEPAPER_META_PATH, default)
+    if not isinstance(data, dict):
+        return default
+    return {**default, **data}
+
+
+def write_whitepaper_meta(display_name: str, size_bytes: int) -> None:
+    write_json(
+        WHITEPAPER_META_PATH,
+        {
+            "display_name": display_name or WHITEPAPER_PATH.name,
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "size_bytes": size_bytes,
+        },
+    )
+
+
+def upload_signature(uploaded: Any) -> str:
+    payload = uploaded.getvalue()
+    digest = hashlib.sha256(payload).hexdigest()[:16]
+    return f"{uploaded.name}:{uploaded.size}:{digest}"
+
+
 def init_session_defaults() -> None:
     st.session_state.setdefault("authenticated", False)
     st.session_state.setdefault("login_error", "")
     st.session_state.setdefault("active_page", "대시보드")
+    st.session_state.setdefault("last_whitepaper_upload_sig", "")
     if st.session_state["active_page"] not in MENU_OPTIONS:
         st.session_state["active_page"] = "대시보드"
 
@@ -866,11 +905,15 @@ def render_header_metrics() -> None:
     chunk_count = len(index["chunks"]) if index else 0
     conv_count = len(load_conversations())
     result_count = len(read_json(RESULT_PATH, []))
+    meta = read_whitepaper_meta()
+    display_name = meta.get("display_name") or (WHITEPAPER_PATH.name if WHITEPAPER_PATH.exists() else "없음")
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("백서 파일", WHITEPAPER_PATH.name if WHITEPAPER_PATH.exists() else "없음")
+    col1.metric("백서 파일", display_name if WHITEPAPER_PATH.exists() else "없음")
     col2.metric("검색 청크", f"{chunk_count:,}")
     col3.metric("저장 대화", f"{conv_count:,}")
     col4.metric("진단 기록", f"{result_count:,}")
+    if meta.get("updated_at"):
+        st.caption(f"백서 최종 반영: {meta.get('updated_at')}")
 
 
 def render_sidebar() -> str:
@@ -918,9 +961,15 @@ def render_sidebar() -> str:
     st.sidebar.divider()
     uploaded = st.sidebar.file_uploader("백서 교체", type=["docx"])
     if uploaded:
-        WHITEPAPER_PATH.write_bytes(uploaded.getbuffer())
-        st.cache_resource.clear()
-        st.sidebar.success("백서가 교체되었습니다. 앱을 새로고침하면 새 인덱스가 적용됩니다.")
+        sig = upload_signature(uploaded)
+        if sig != st.session_state.get("last_whitepaper_upload_sig"):
+            payload = uploaded.getvalue()
+            WHITEPAPER_PATH.write_bytes(payload)
+            write_whitepaper_meta(uploaded.name, len(payload))
+            st.session_state["last_whitepaper_upload_sig"] = sig
+            st.cache_resource.clear()
+            st.sidebar.success("백서가 교체되었습니다. 현재 화면에 바로 반영합니다.")
+            st.rerun()
 
     key_exists = bool(get_api_key())
     st.sidebar.caption(f"LLM 상태: {'사용 가능' if key_exists else '환경변수/Secrets 미설정'}")
@@ -1225,7 +1274,10 @@ def page_curriculum() -> None:
 def page_settings() -> None:
     hero("설정", "백서 파일, API 키 설정 방식, 저장 데이터 상태를 확인합니다.")
     st.markdown("### 백서")
-    st.write(f"앱 내부 백서명: `{WHITEPAPER_PATH.name}`")
+    meta = read_whitepaper_meta()
+    st.write(f"앱 내부 저장명: `{WHITEPAPER_PATH.name}`")
+    st.write(f"화면 표시명: `{meta.get('display_name', WHITEPAPER_PATH.name)}`")
+    st.write(f"마지막 반영 시각: `{meta.get('updated_at') or '기본 백서'}`")
     st.write(f"존재 여부: `{WHITEPAPER_PATH.exists()}`")
     if WHITEPAPER_PATH.exists():
         st.download_button("현재 백서 다운로드", data=WHITEPAPER_PATH.read_bytes(), file_name=WHITEPAPER_PATH.name, use_container_width=True)
