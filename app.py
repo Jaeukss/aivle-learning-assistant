@@ -136,37 +136,41 @@ st.markdown(
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css');
 
     :root {
-        --bg: #f5f8fc;
-        --surface: #ffffff;
-        --surface-soft: #f8fafc;
-        --line: #dbe3ef;
-        --text: #111827;
-        --muted: #64748b;
-        --brand: #2563eb;
-        --brand-2: #0ea5e9;
-        --brand-soft: #eff6ff;
-        --green-soft: #ecfdf5;
-        --orange-soft: #fff7ed;
-        --shadow: 0 14px 34px rgba(15, 23, 42, .08);
+        --primary: #2F6F5E;
+        --primary-hover: #255C4E;
+        --secondary: #DFAE43;
+        --accent: #6C7A89;
+        --background: #F7F5EF;
+        --surface: #FFFFFF;
+        --surface-soft: #F1EEE7;
+        --text: #1F2933;
+        --muted: #68717A;
+        --border: #DDD6C8;
+        --success: #3F8F68;
+        --warning: #C9822B;
+        --error: #B94A48;
+        --info: #4F7C8A;
+        --shadow: 0 12px 28px rgba(31, 41, 51, .07);
+        --shadow-soft: 0 6px 16px rgba(31, 41, 51, .05);
     }
 
     html, body, [class*="css"], .stApp, .stMarkdown, .stTextInput, .stTextArea,
     .stSelectbox, .stButton, .stDataFrame, .stChatMessage, input, textarea, button,
-    .stRadio, .stCheckbox, .stFileUploader {
+    .stRadio, .stCheckbox, .stFileUploader, .stTabs {
         font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     }
 
     .stApp {
         background:
-            radial-gradient(circle at 0% 0%, rgba(37, 99, 235, .10), transparent 30%),
-            radial-gradient(circle at 100% 0%, rgba(14, 165, 233, .12), transparent 30%),
-            linear-gradient(180deg, #fbfdff 0%, #eef4fb 100%) !important;
+            radial-gradient(circle at 3% 0%, rgba(47,111,94,.10), transparent 28%),
+            radial-gradient(circle at 95% 3%, rgba(223,174,67,.12), transparent 24%),
+            linear-gradient(180deg, #FBFAF6 0%, var(--background) 58%, #F1EEE7 100%) !important;
         color: var(--text);
     }
 
     .main .block-container {
         max-width: 1240px;
-        padding-top: 1.15rem;
+        padding-top: 1.1rem;
         padding-bottom: 3rem;
     }
 
@@ -174,123 +178,154 @@ st.markdown(
     .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
         color: #111827 !important;
         letter-spacing: -0.035em;
-        font-weight: 850 !important;
+        font-weight: 880 !important;
     }
+    p, li, label, .stMarkdown, .stCaption, .stText { color: var(--text); }
+    small, .small-help { color: var(--muted) !important; font-size: .82rem; line-height: 1.5; }
 
-    p, li, label, .stMarkdown, .stCaption, .stText { color: #1f2937; }
-    small, .small-help { color: #64748b !important; font-size: .82rem; line-height: 1.45; }
-
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #ffffff 0%, #f3f7fc 100%) !important;
-        border-right: 1px solid var(--line);
-        min-width: 18rem;
-    }
-    section[data-testid="stSidebar"] * { color: #111827 !important; }
-    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: #111827 !important; }
-
+    header[data-testid="stHeader"] { background: transparent !important; }
     [data-testid="stToolbar"], [data-testid="stStatusWidget"], [data-testid="stDeployButton"], .stDeployButton {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
     }
-    header[data-testid="stHeader"] { background: transparent !important; }
 
-    .app-hero {
-        background: linear-gradient(135deg, #ffffff 0%, #eef6ff 54%, #e0f2fe 100%);
-        border: 1px solid rgba(37, 99, 235, .15);
-        border-radius: 30px;
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #FFFEFB 0%, var(--surface-soft) 100%) !important;
+        border-right: 1px solid var(--border);
+        min-width: 18rem;
+    }
+    section[data-testid="stSidebar"] * { color: var(--text) !important; }
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: var(--text) !important; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
+        border-radius: 14px !important;
+        padding: 7px 8px !important;
+        margin: 2px 0 !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+        background: rgba(47,111,94,.08) !important;
+    }
+
+    .app-shell { width: 100%; }
+    .learning-hero {
+        background: linear-gradient(135deg, #FFFFFF 0%, #F7F5EF 58%, #F1EEE7 100%);
+        border: 1px solid var(--border);
+        border-radius: 26px;
         box-shadow: var(--shadow);
-        padding: 30px 34px;
-        margin-bottom: 20px;
+        padding: 28px 32px;
+        margin-bottom: 18px;
         position: relative;
         overflow: hidden;
     }
-    .app-hero::after {
+    .learning-hero::after {
         content: "";
         position: absolute;
-        right: -70px;
-        top: -80px;
-        width: 230px;
-        height: 230px;
+        right: -72px;
+        top: -78px;
+        width: 220px;
+        height: 220px;
         border-radius: 999px;
-        background: rgba(37, 99, 235, .12);
+        background: rgba(47,111,94,.10);
+    }
+    .learning-hero::before {
+        content: "";
+        position: absolute;
+        right: 62px;
+        bottom: -78px;
+        width: 160px;
+        height: 160px;
+        border-radius: 999px;
+        background: rgba(223,174,67,.12);
     }
     .hero-kicker {
         display: inline-flex;
         align-items: center;
         gap: 7px;
-        color: #1d4ed8;
-        background: #dbeafe;
-        border: 1px solid #bfdbfe;
-        padding: 6px 11px;
+        color: var(--primary);
+        background: rgba(47,111,94,.09);
+        border: 1px solid rgba(47,111,94,.20);
+        padding: 6px 12px;
         border-radius: 999px;
         font-size: .82rem;
         font-weight: 850;
         margin-bottom: 10px;
     }
-    .app-hero h1 {
-        margin: 0 0 9px 0;
-        font-size: 2.05rem;
+    .learning-hero h1 {
+        margin: 0 0 8px 0;
+        font-size: clamp(1.55rem, 3vw, 2.15rem);
         line-height: 1.2;
-        color: #0f172a !important;
+        color: var(--text) !important;
     }
-    .app-hero p {
+    .learning-hero p {
         margin: 0;
-        color: #475569;
-        font-size: 1.02rem;
+        color: var(--muted);
+        font-size: 1.0rem;
         line-height: 1.65;
-        max-width: 820px;
+        max-width: 860px;
     }
 
     .section-title {
         color: #111827 !important;
-        font-size: 1.22rem;
+        font-size: 1.2rem;
         font-weight: 900;
-        margin: 20px 0 10px 0;
+        margin: 20px 0 8px 0;
         letter-spacing: -0.03em;
     }
     .section-sub {
         color: var(--muted);
-        margin-top: -6px;
+        margin-top: -3px;
         margin-bottom: 12px;
-        font-size: .92rem;
+        font-size: .93rem;
     }
 
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin: 14px 0 18px 0;
+    }
+    .summary-card, .action-card, .path-card, .progress-card, .notice-card, .empty-state, .source-card, .info-panel, .learn-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        box-shadow: var(--shadow-soft);
+    }
+    .summary-card { padding: 16px 17px; min-height: 112px; }
+    .summary-card .label { color: var(--muted); font-size: .78rem; font-weight: 850; margin-bottom: 8px; }
+    .summary-card .value { color: var(--text); font-weight: 920; font-size: 1.22rem; line-height: 1.25; word-break: break-word; }
+    .summary-card .hint { color: var(--muted); font-size: .78rem; margin-top: 7px; }
+
     div[data-testid="stMetric"] {
-        background: rgba(255,255,255,.96) !important;
-        border: 1px solid var(--line) !important;
-        border-radius: 22px !important;
-        box-shadow: 0 10px 26px rgba(15,23,42,.06) !important;
-        padding: 15px 16px !important;
+        background: var(--surface) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 20px !important;
+        box-shadow: var(--shadow-soft) !important;
+        padding: 14px 16px !important;
     }
     div[data-testid="stMetric"] * { color: #111827 !important; }
 
-    .learn-card, .info-panel {
-        background: #ffffff;
-        border: 1px solid var(--line);
-        border-radius: 24px;
-        padding: 20px;
-        box-shadow: 0 10px 24px rgba(15,23,42,.06);
-        margin-bottom: 14px;
-    }
+    .learn-card, .info-panel, .action-card, .path-card, .progress-card { padding: 19px; margin-bottom: 14px; }
     .learn-card { min-height: 150px; transition: all .15s ease; }
-    .learn-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 18px 36px rgba(15,23,42,.10);
-        border-color: rgba(37,99,235,.35);
+    .learn-card:hover, .action-card:hover, .path-card:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--shadow);
+        border-color: rgba(47,111,94,.34);
     }
-    .learn-card .badge {
-        display: inline-block;
+    .learn-card .badge, .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         padding: 5px 10px;
         border-radius: 999px;
         font-weight: 850;
         font-size: .78rem;
-        color: #1d4ed8;
-        background: #dbeafe;
-        margin-bottom: 12px;
+        color: var(--primary);
+        background: rgba(47,111,94,.09);
+        border: 1px solid rgba(47,111,94,.18);
+        margin-bottom: 10px;
     }
-    .learn-card h3 { font-size: 1.07rem; margin: 0 0 8px 0; color: #111827 !important; }
-    .learn-card p { margin: 0; color: #64748b; line-height: 1.55; font-size: .94rem; }
+    .learn-card h3, .action-card h3, .path-card h3 { font-size: 1.06rem; margin: 0 0 8px 0; color: #111827 !important; }
+    .learn-card p, .action-card p, .path-card p, .progress-card p { margin: 0; color: var(--muted); line-height: 1.55; font-size: .94rem; }
 
     .routine-strip {
         display: grid;
@@ -298,27 +333,48 @@ st.markdown(
         gap: 12px;
         margin: 12px 0 20px 0;
     }
-    .routine-item {
-        background: #ffffff;
-        border: 1px solid var(--line);
+    .routine-item, .path-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 20px;
         padding: 15px;
-        min-height: 108px;
-        box-shadow: 0 8px 22px rgba(15,23,42,.05);
+        min-height: 112px;
+        box-shadow: var(--shadow-soft);
     }
     .routine-item b { display:block; color: #111827; margin-bottom: 6px; }
-    .routine-item span { color: #2563eb; font-size: .78rem; font-weight: 900; }
-    .routine-item p { color: #64748b; font-size: .88rem; line-height: 1.45; margin: 6px 0 0 0; }
+    .routine-item span { color: var(--primary); font-size: .78rem; font-weight: 900; }
+    .routine-item p { color: var(--muted); font-size: .88rem; line-height: 1.45; margin: 6px 0 0 0; }
 
-    .source-box {
-        background: #f8fafc;
-        border: 1px dashed #cbd5e1;
+    .notice-card {
+        border-left: 5px solid var(--info);
+        padding: 14px 16px;
+        margin: 10px 0 14px 0;
+        color: var(--text);
+        background: #FBFAF6;
+    }
+    .notice-card b { color: #111827; }
+    .empty-state {
+        padding: 22px;
+        background: #FFFEFB;
+        text-align: left;
+        margin: 12px 0;
+    }
+    .empty-state b { color:#111827; }
+    .empty-state p { color:var(--muted); margin:.35rem 0 0; }
+    .source-card, .source-box {
+        background: #FBFAF6;
+        border: 1px dashed var(--border);
         border-radius: 16px;
         padding: 14px;
         margin: 8px 0;
     }
-    .source-box b { color: #111827; }
-    .source-box p { color: #475569; }
+    .source-box b, .source-card b { color: #111827; }
+    .source-box p, .source-card p { color: var(--muted); }
+
+    .badge-success { background: rgba(63,143,104,.12); color: var(--success); border-color: rgba(63,143,104,.25); }
+    .badge-warning { background: rgba(201,130,43,.12); color: var(--warning); border-color: rgba(201,130,43,.25); }
+    .badge-info { background: rgba(79,124,138,.12); color: var(--info); border-color: rgba(79,124,138,.25); }
+    .badge-muted { background: var(--surface-soft); color: var(--muted); border-color: var(--border); }
 
     .sidebar-brand {
         display: flex;
@@ -326,9 +382,9 @@ st.markdown(
         gap: 12px;
         border-radius: 22px;
         padding: 15px 13px;
-        background: linear-gradient(135deg, #eff6ff, #ffffff);
-        border: 1px solid #bfdbfe;
-        box-shadow: 0 10px 24px rgba(37,99,235,.08);
+        background: linear-gradient(135deg, #FFFFFF, #F1EEE7);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-soft);
         margin: 4px 0 14px 0;
     }
     .brand-mark {
@@ -338,82 +394,85 @@ st.markdown(
         place-items: center;
         border-radius: 15px;
         color: white !important;
-        background: linear-gradient(135deg, #2563eb, #0ea5e9);
+        background: var(--primary);
         font-weight: 950;
     }
-    .brand-title { color: #0f172a !important; font-size: 1.05rem; font-weight: 950; line-height: 1.2; }
-    .brand-sub { color: #2563eb !important; font-size: .8rem; font-weight: 800; margin-top: 2px; }
+    .brand-title { color: var(--text) !important; font-size: 1.05rem; font-weight: 950; line-height: 1.2; }
+    .brand-sub { color: var(--primary) !important; font-size: .8rem; font-weight: 800; margin-top: 2px; }
     .current-pill {
         border-radius: 999px;
         padding: 9px 12px;
-        background: #eff6ff;
-        border: 1px solid #bfdbfe;
-        color: #1d4ed8 !important;
-        font-weight: 800;
+        background: rgba(47,111,94,.09);
+        border: 1px solid rgba(47,111,94,.20);
+        color: var(--primary) !important;
+        font-weight: 850;
         font-size: .86rem;
         margin: 8px 0 10px 0;
     }
     .side-label {
-        color: #64748b !important;
+        color: var(--muted) !important;
         font-size: .80rem;
         font-weight: 900;
         letter-spacing: .02em;
         margin: 12px 0 6px 0;
     }
+    .sidebar-section {
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+        margin-top: 12px;
+    }
 
     div.stButton > button {
         border-radius: 14px !important;
-        border: 1px solid rgba(37,99,235,.20) !important;
-        background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
+        border: 1px solid rgba(47,111,94,.22) !important;
+        background: linear-gradient(180deg, var(--primary), var(--primary-hover)) !important;
         color: #ffffff !important;
         font-weight: 850 !important;
-        min-height: 2.8rem;
-        box-shadow: 0 8px 18px rgba(37,99,235,.18);
+        min-height: 2.75rem;
+        box-shadow: 0 8px 18px rgba(47,111,94,.16);
     }
     div.stButton > button:hover {
         transform: translateY(-1px);
-        border-color: #60a5fa !important;
-        box-shadow: 0 12px 24px rgba(37,99,235,.25);
+        border-color: rgba(47,111,94,.42) !important;
+        box-shadow: 0 12px 24px rgba(47,111,94,.22);
+    }
+    div.stButton > button:disabled {
+        background: #D8D2C7 !important;
+        color: #7A756C !important;
+        border-color: var(--border) !important;
+        box-shadow: none !important;
     }
 
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; flex-wrap: wrap; }
     .stTabs [data-baseweb="tab"] {
-        background: #ffffff;
-        border: 1px solid var(--line);
+        background: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 999px;
         padding: 8px 14px;
-        color: #111827;
+        color: var(--text);
     }
     .stTabs [aria-selected="true"] {
-        background: #dbeafe !important;
-        color: #1d4ed8 !important;
-        border-color: #93c5fd !important;
+        background: rgba(47,111,94,.10) !important;
+        color: var(--primary) !important;
+        border-color: rgba(47,111,94,.30) !important;
     }
 
     [data-testid="stChatMessage"] {
-        background: #ffffff;
-        border: 1px solid var(--line);
+        background: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 20px;
         padding: 10px 12px;
-        box-shadow: 0 6px 18px rgba(15,23,42,.04);
+        box-shadow: var(--shadow-soft);
     }
+    [data-testid="stDataFrame"] { border-radius: 18px; overflow: hidden; }
+    .danger-zone { border-left: 5px solid var(--error); background: #FFF7F6; }
 
-    .notice-box {
-        border-left: 5px solid #2563eb;
-        background: #eff6ff;
-        border-radius: 16px;
-        padding: 12px 14px;
-        color: #1e3a8a;
-        margin: 10px 0 14px 0;
-    }
-
-    @media (max-width: 980px) { .routine-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 640px) { .routine-strip { grid-template-columns: 1fr; } .app-hero { padding: 24px 20px; } }
+    @media (max-width: 1199px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .routine-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 767px) { .summary-grid, .routine-strip { grid-template-columns: 1fr; } .learning-hero { padding: 22px 18px; } .main .block-container { padding-left: .9rem; padding-right: .9rem; } }
     </style>
     """,
     unsafe_allow_html=True,
 )
-
 
 # ============================================================
 # 저장소 / 상태
@@ -597,9 +656,10 @@ def parse_uploaded_file(uploaded: Any, max_chars: int = 60000) -> str:
             text = data.decode("utf-8-sig", errors="ignore")
         else:
             text = data.decode("utf-8", errors="ignore")
-    except Exception as exc:
-        return f"파일을 읽는 중 오류가 발생했습니다: {exc}"
-    return normalize_text(text)[:max_chars]
+    except Exception:
+        return ""
+    parsed = normalize_text(text)[:max_chars]
+    return parsed
 
 
 def normalize_text(text: str) -> str:
@@ -1289,7 +1349,7 @@ def save_career_report(title: str, report: str, report_type: str) -> None:
 def hero(title: str, body: str, kicker: str = "AIVLE 학습도우미") -> None:
     st.markdown(
         f"""
-        <div class='app-hero'>
+        <div class='learning-hero'>
             <div class='hero-kicker'>{kicker}</div>
             <h1>{title}</h1>
             <p>{body}</p>
@@ -1309,17 +1369,63 @@ def small_help(text: str) -> None:
     st.markdown(f"<div class='small-help'>{text}</div>", unsafe_allow_html=True)
 
 
+def status_badge(text: str, kind: str = "info") -> None:
+    class_name = {"success": "badge-success", "warning": "badge-warning", "muted": "badge-muted"}.get(kind, "badge-info")
+    st.markdown(f"<span class='status-badge {class_name}'>{text}</span>", unsafe_allow_html=True)
+
+
+def notice_card(title: str, body: str, badge: str = "안내", kind: str = "info") -> None:
+    class_name = "danger-zone" if kind == "danger" else ""
+    st.markdown(
+        f"""
+        <div class='notice-card {class_name}'>
+            <span class='status-badge badge-info'>{badge}</span><br>
+            <b>{title}</b>
+            <p style='margin:.45rem 0 0;color:var(--muted);line-height:1.55;'>{body}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def empty_state(title: str, body: str) -> None:
+    st.markdown(
+        f"""
+        <div class='empty-state'>
+            <b>{title}</b>
+            <p>{body}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def summary_cards(items: List[Tuple[str, str, str]]) -> None:
+    cards = []
+    for label, value, hint in items:
+        cards.append(
+            f"""
+            <div class='summary-card'>
+                <div class='label'>{label}</div>
+                <div class='value'>{value}</div>
+                <div class='hint'>{hint}</div>
+            </div>
+            """
+        )
+    st.markdown("<div class='summary-grid'>" + "".join(cards) + "</div>", unsafe_allow_html=True)
+
+
 def ensure_whitepaper_ready() -> bool:
     path = get_whitepaper_path()
     if not path.exists():
-        st.error("학습 자료가 없습니다. 왼쪽 사이드바에서 DOCX 또는 PDF 백서를 업로드해 주세요.")
+        notice_card("학습 자료가 없습니다", "왼쪽 사이드바에서 DOCX, PDF, TXT 형식의 백서나 커리큘럼 자료를 업로드하면 검색과 답변 기능을 사용할 수 있습니다.", badge="자료 필요")
         return False
     return True
 
 
 def render_sources(hits: List[SearchHit]) -> None:
     if not hits:
-        st.info("표시할 백서 근거가 없습니다.")
+        empty_state("표시할 백서 근거가 없습니다", "질문을 더 구체화하거나 학습 자료를 다시 업로드해 주세요.")
         return
     with st.expander("백서 근거 보기", expanded=False):
         for idx, hit in enumerate(hits, start=1):
@@ -1351,11 +1457,12 @@ def render_header_metrics() -> None:
     wrong_count = len(read_json(WRONG_NOTE_PATH, []))
     meta = get_whitepaper_meta()
     display_name = meta.get("display_name") or get_whitepaper_path().name
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("학습 자료", display_name)
-    c2.metric("검색 청크", f"{chunk_count:,}")
-    c3.metric("저장 대화", f"{conv_count:,}")
-    c4.metric("진단 / 오답", f"{result_count:,} / {wrong_count:,}")
+    summary_cards([
+        ("현재 학습 자료", display_name, "업로드한 백서·커리큘럼 기준"),
+        ("검색 청크", f"{chunk_count:,}", "백서 기반 검색 단위"),
+        ("저장 대화", f"{conv_count:,}", "이어볼 수 있는 학습 대화"),
+        ("진단 / 오답", f"{result_count:,} / {wrong_count:,}", "누적 학습 점검 기록"),
+    ])
 
 
 def upload_signature(uploaded: Any) -> str:
@@ -1389,7 +1496,7 @@ def render_login_page() -> None:
                 st.rerun()
             st.session_state["login_error"] = "아이디 또는 비밀번호가 올바르지 않습니다."
         if st.session_state.get("login_error"):
-            st.error(st.session_state["login_error"])
+            notice_card("로그인 정보 확인", st.session_state["login_error"], badge="로그인 실패", kind="danger")
 
 
 def render_sidebar() -> str:
@@ -1410,6 +1517,16 @@ def render_sidebar() -> str:
         """,
         unsafe_allow_html=True,
     )
+
+    meta = get_whitepaper_meta()
+    path = get_whitepaper_path()
+    material_status = "적용됨" if path.exists() else "없음"
+    badge_class = "badge-success" if path.exists() else "badge-warning"
+    st.sidebar.markdown(
+        f"<span class='status-badge {badge_class}'>학습 자료 {material_status}</span>",
+        unsafe_allow_html=True,
+    )
+    st.sidebar.caption(f"현재 자료: {meta.get('display_name', path.name)}")
 
     current_page = st.session_state.get("active_page", "대시보드")
     if current_page not in MENU_OPTIONS:
@@ -1450,15 +1567,20 @@ def render_sidebar() -> str:
     if uploaded is not None:
         sig = upload_signature(uploaded)
         if sig != st.session_state.get("last_upload_sig"):
-            suffix = Path(uploaded.name).suffix.lower() or ".docx"
-            target = DATA_DIR / f"current_whitepaper{suffix}"
-            payload = uploaded.getvalue()
-            target.write_bytes(payload)
-            save_whitepaper_meta(uploaded.name, target, len(payload))
-            st.session_state["last_upload_sig"] = sig
-            st.cache_resource.clear()
-            st.sidebar.success("학습 자료가 반영되었습니다.")
-            st.rerun()
+            preview_text = parse_uploaded_file(uploaded, max_chars=1500)
+            if not preview_text.strip():
+                st.session_state["last_upload_sig"] = sig
+                st.sidebar.warning("텍스트를 추출할 수 없는 파일입니다. DOCX, 텍스트가 포함된 PDF, TXT 자료를 다시 올려 주세요.")
+            else:
+                suffix = Path(uploaded.name).suffix.lower() or ".docx"
+                target = DATA_DIR / f"current_whitepaper{suffix}"
+                payload = uploaded.getvalue()
+                target.write_bytes(payload)
+                save_whitepaper_meta(uploaded.name, target, len(payload))
+                st.session_state["last_upload_sig"] = sig
+                st.cache_resource.clear()
+                st.sidebar.success("학습 자료가 반영되었습니다.")
+                st.rerun()
 
     st.sidebar.divider()
     if st.sidebar.button("로그아웃", use_container_width=True):
@@ -1546,6 +1668,8 @@ def page_dashboard() -> None:
 
 def page_chat() -> None:
     hero("학습 질의", "자주 묻는 질문을 버튼으로 선택하거나 직접 질문해 백서 기반 답변을 확인합니다.")
+    status_badge("백서 근거 기반 답변", "success")
+    status_badge("근거 부족 시 안내 카드 표시", "muted")
     if not ensure_whitepaper_ready():
         return
 
@@ -1563,6 +1687,9 @@ def page_chat() -> None:
     conversations = load_conversations()
     messages = conversations[conv_id].get("messages", [])
     st.divider()
+
+    if not messages:
+        empty_state("아직 대화가 없습니다", "추천 질문을 누르거나 아래 입력창에 질문을 입력하면 백서 근거를 찾아 답변합니다.")
 
     for msg in messages:
         with st.chat_message(msg.get("role", "assistant")):
@@ -1615,7 +1742,7 @@ def page_prep_diagnosis() -> None:
             hits = [SearchHit(**item) for item in st.session_state.get("prep_hits", [])]
             render_sources(hits)
         else:
-            st.info("예습 조건을 선택하고 자료를 생성하세요.")
+            empty_state("예습 자료가 아직 없습니다", "왼쪽에서 주차, 주제, 학습 가능 시간을 선택한 뒤 예습 자료를 생성하세요.")
 
     st.divider()
     section("쪽지시험")
@@ -1686,7 +1813,7 @@ def page_review_analysis() -> None:
 
     section("학습 진단 요약")
     if not results:
-        st.info("아직 저장된 쪽지시험 결과가 없습니다.")
+        empty_state("진단 기록이 없습니다", "예습·진단 메뉴에서 쪽지시험을 풀면 점수와 취약 주제를 확인할 수 있습니다.")
     else:
         df = pd.DataFrame(results)
         c1, c2, c3 = st.columns(3)
@@ -1721,7 +1848,7 @@ def page_review_analysis() -> None:
     st.divider()
     section("오답노트")
     if not wrong_notes:
-        st.info("저장된 오답이 없습니다.")
+        empty_state("오답노트가 비어 있습니다", "쪽지시험에서 틀린 문제가 생기면 자동으로 오답노트에 저장됩니다.")
         return
     topic_filter = st.selectbox("주제 필터", ["전체"] + sorted({item.get("topic", "기타") for item in wrong_notes}))
     filtered = wrong_notes if topic_filter == "전체" else [item for item in wrong_notes if item.get("topic") == topic_filter]
@@ -1888,7 +2015,7 @@ def page_plan_curriculum() -> None:
             section("캘린더")
             events = read_calendar()
             if not events:
-                st.info("등록된 일정이 없습니다.")
+                empty_state("등록된 일정이 없습니다", "수업, 시험, 스터디, 공고 마감일을 추가해 학습 흐름을 관리하세요.")
             else:
                 df = pd.DataFrame(events)
                 df["date"] = pd.to_datetime(df["date"], errors="coerce")
@@ -1921,7 +2048,7 @@ def page_learning_status() -> None:
     if results:
         st.dataframe(pd.DataFrame(results[-8:])[["time", "topic", "score", "level"]], hide_index=True, use_container_width=True)
     else:
-        st.info("최근 진단 기록이 없습니다.")
+        empty_state("최근 진단 기록이 없습니다", "예습·진단 메뉴에서 쪽지시험을 풀면 이곳에 기록됩니다.")
 
     section("최근 일정")
     events = read_calendar()
@@ -1930,7 +2057,7 @@ def page_learning_status() -> None:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         st.dataframe(df.sort_values("date").head(10)[["date", "kind", "title", "note"]], hide_index=True, use_container_width=True)
     else:
-        st.info("등록된 일정이 없습니다.")
+        empty_state("등록된 일정이 없습니다", "수업, 시험, 스터디, 공고 마감일을 추가해 학습 흐름을 관리하세요.")
 
     section("최근 취업 준비 기록")
     reports = read_json(CAREER_REPORT_PATH, [])
@@ -1938,7 +2065,7 @@ def page_learning_status() -> None:
         view = pd.DataFrame([{k: r.get(k) for k in ["time", "type", "title"]} for r in reports[-10:]])
         st.dataframe(view, hide_index=True, use_container_width=True)
     else:
-        st.info("저장된 취업 준비 기록이 없습니다.")
+        empty_state("취업 준비 기록이 없습니다", "취업 준비 메뉴에서 포트폴리오, 면접, 공고 분석을 실행하면 기록됩니다.")
 
 
 # ============================================================
