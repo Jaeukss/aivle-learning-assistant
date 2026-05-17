@@ -33,7 +33,7 @@ except Exception:  # pragma: no cover
 
 
 # ============================================================
-# AIVLE Navigator
+# AIVLE 학습도우미
 # - 기존 app.py의 코드 구조를 재사용하지 않고 새로 작성한 Streamlit 앱
 # - 백서 기반 질의응답, 예습, 쪽지시험, 수준진단, 캘린더, 대화저장 포함
 # ============================================================
@@ -48,7 +48,7 @@ WRONG_NOTE_PATH = STORE_DIR / "wrong_notes.json"
 CALENDAR_PATH = STORE_DIR / "calendar_events.json"
 WHITEPAPER_META_PATH = STORE_DIR / "whitepaper_meta.json"
 
-APP_TITLE = "AIVLE Navigator"
+APP_TITLE = "AIVLE 학습도우미"
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 EMBEDLESS_TOP_K = 6
 
@@ -877,7 +877,7 @@ def ensure_whitepaper_ready() -> bool:
 
 
 def render_login_page() -> None:
-    hero("AIVLE Navigator", "백서 기반 학습 어시스턴트에 접속합니다.")
+    hero("AIVLE 학습도우미", "백서 기반 학습 어시스턴트에 접속합니다.")
     left, center, right = st.columns([1, 1.1, 1])
     with center:
         st.markdown("### 로그인")
@@ -918,7 +918,7 @@ def render_header_metrics() -> None:
 
 
 def render_sidebar() -> str:
-    st.sidebar.markdown("## 🧭 AIVLE Navigator")
+    st.sidebar.markdown("## 🧭 AIVLE 학습도우미")
     st.sidebar.caption("학습자 모드")
     if st.sidebar.button("로그아웃", use_container_width=True):
         st.session_state["authenticated"] = False
@@ -980,7 +980,7 @@ def render_sidebar() -> str:
 # ============================================================
 
 def page_dashboard() -> None:
-    hero("AIVLE Navigator", "백서를 기반으로 질문, 예습, 수준진단, 복습, 일정, 외부활동 관리를 한 화면에서 연결합니다.")
+    hero("AIVLE 학습도우미", "백서를 기반으로 질문, 예습, 수준진단, 복습, 일정, 외부활동 관리를 한 화면에서 연결합니다.")
     render_header_metrics()
     st.markdown("### 기능 구성")
     rows = [

@@ -1,4 +1,4 @@
-# AIVLE Navigator
+# AIVLE 학습도우미
 
 KT AIVLE School 백서를 기반으로 학습 질의, 예습 자료 생성, 쪽지시험, 수준 진단, 오답노트, 공고 정리, 캘린더, 커리큘럼 확인, 대화 저장을 제공하는 Streamlit 앱입니다.
 
