@@ -81,10 +81,14 @@ st.markdown(
     """
     <style>
     :root {
-        --card-bg: rgba(255,255,255,.78);
-        --line: rgba(15,23,42,.12);
-        --text-soft: #64748b;
-        --brand: #2563eb;
+        --card-bg: rgba(15,23,42,.72);
+        --line: rgba(148,163,184,.22);
+        --text-soft: #94a3b8;
+        --brand: #60a5fa;
+    }
+    .stApp {
+        background: radial-gradient(circle at 0% 0%, rgba(37,99,235,.16), transparent 35%),
+                    linear-gradient(135deg, #020617 0%, #0f172a 52%, #111827 100%) !important;
     }
     .main .block-container {padding-top: 1.2rem; max-width: 1280px;}
     [data-testid="stSidebar"] {background: #0f172a;}
@@ -99,7 +103,18 @@ st.markdown(
     div[data-testid="stMetric"] * {
         color: #111827 !important;
     }
-    /* Streamlit 헤더 전체를 숨기면 사이드바 열기/닫기 버튼까지 사라질 수 있어 숨기지 않습니다. */
+    /* 상단 Share/GitHub/메뉴 영역만 숨깁니다. 헤더 전체는 숨기지 않아 사이드바 버튼은 유지됩니다. */
+    [data-testid="stToolbar"],
+    [data-testid="stStatusWidget"],
+    [data-testid="stDeployButton"],
+    .stDeployButton {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+    }
+    header[data-testid="stHeader"] {
+        background: transparent !important;
+    }
     section[data-testid="stSidebar"] {
         background: #0f172a !important;
         min-width: 18rem;
@@ -121,9 +136,10 @@ st.markdown(
     .panel {
         border: 1px solid var(--line);
         background: var(--card-bg);
+        color: #e5e7eb;
         border-radius: 22px;
         padding: 18px 20px;
-        box-shadow: 0 12px 30px rgba(15,23,42,.05);
+        box-shadow: 0 12px 30px rgba(0,0,0,.18);
         margin-bottom: 14px;
     }
     .small-note {color: var(--text-soft); font-size: .9rem;}
@@ -146,10 +162,10 @@ st.markdown(
         margin: 8px 0 16px 0;
     }
     .source-box {
-        border: 1px dashed rgba(100,116,139,.35);
+        border: 1px dashed rgba(148,163,184,.35);
         border-radius: 14px;
         padding: 12px;
-        background: rgba(248,250,252,.9);
+        background: rgba(15,23,42,.72);
         margin: 6px 0;
     }
     </style>
