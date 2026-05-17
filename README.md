@@ -1,58 +1,29 @@
 # AIVLE 학습도우미
 
-KT AIVLE School 백서를 기반으로 학습 질의, 예습 자료 생성, 쪽지시험, 수준 진단, 오답노트, 공고 정리, 캘린더, 커리큘럼 확인, 대화 저장을 제공하는 Streamlit 앱입니다.
+Streamlit 기반 AIVLE 학습자용 보조 앱입니다.
 
-## 파일 구성
+## 핵심 메뉴
 
-```text
-app.py
-requirements.txt
-.streamlit/config.toml
-data/aivle_kt_learning_whitepaper_2026.docx
-storage/                 # 실행 중 자동 생성되는 JSON 저장소
-```
+- 대시보드: 오늘의 체크리스트, 학습 흐름
+- 학습 질의: 백서 기반 Q&A, 추천 질문, 학습 사이트 링크
+- 예습·진단: 예습 자료 생성, 쪽지시험, 수준 판별
+- 복습·분석: 취약 주제, 오답노트, AI 학습 코치
+- 취업 준비: 포트폴리오 파일 분석, 면접 질문, 채용공고 분석, 문장 정리
+- 일정·커리큘럼: 커리큘럼, 학습 플래너, 캘린더
+- 내 학습 현황: 저장 기록 확인
 
-## 실행 방법
+## 실행
 
 ```bash
 pip install -r requirements.txt
-export OPENAI_API_KEY="sk-..."
 streamlit run app.py
 ```
 
-Streamlit Cloud 또는 Hugging Face Spaces에서는 `OPENAI_API_KEY`를 Secrets에 등록하세요. API 키를 코드에 직접 넣지 마세요.
-
-로그인 기본값은 `admin / aivle2026`입니다. 배포 시 Secrets에서 아래 값을 반드시 바꾸는 것을 권장합니다.
+## Streamlit Secrets 예시
 
 ```toml
-APP_LOGIN_ID = "admin"
-APP_LOGIN_PASSWORD = "원하는_비밀번호"
 OPENAI_API_KEY = "sk-..."
 OPENAI_MODEL = "gpt-4o-mini"
+APP_LOGIN_ID = "admin"
+APP_LOGIN_PASSWORD = "aivle2026"
 ```
-
-## 구현 기능
-
-- 로그인 페이지
-- 추천 질문 / 빠른 질문 버튼
-- 백서 기반 학습 질의응답
-- 주차·주제별 예습 자료 생성
-- 예습 자료 기반 쪽지시험 생성
-- 시험 결과 기반 초급·중급·고급 판별
-- 수준별 스터디 추천
-- 부족한 주제 시각화
-- 오답노트 저장 및 복습
-- 공고 정리 / 공모전 추천
-- 캘린더 일정 관리
-- 커리큘럼 확인
-- ChatGPT식 대화 목록 저장
-- 학습 사이트 링크 추천
-
-## 보안 메모
-
-업로드한 `api_key.txt`는 패키지에 포함하지 않았습니다. 실제 키가 외부에 노출되었다면 OpenAI, Hugging Face, SendGrid 콘솔에서 즉시 폐기·재발급하세요.
-
-
-## v5 변경 사항
-- Streamlit 헤더를 강제로 숨기던 CSS를 제거해 사이드바가 다시 보이도록 수정했습니다.
-- 사용자 화면 기준으로 관리자용 설정 문구는 제거했습니다.
