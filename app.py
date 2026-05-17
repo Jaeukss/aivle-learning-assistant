@@ -252,6 +252,112 @@ st.markdown(
         padding: 4px;
     }
 
+    .sidebar-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 12px 18px 12px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, rgba(37,99,235,.24), rgba(14,165,233,.10));
+        border: 1px solid rgba(147,197,253,.18);
+        margin-bottom: 10px;
+    }
+    .brand-mark {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        color: white;
+        font-weight: 900;
+        background: linear-gradient(135deg, #2563eb, #38bdf8);
+        box-shadow: 0 10px 22px rgba(37,99,235,.24);
+    }
+    .brand-title {font-size: 1.05rem; font-weight: 900; color: #f8fafc; line-height: 1.2;}
+    .brand-sub {font-size: .80rem; color: #93c5fd; margin-top: 3px;}
+    .current-page-pill {
+        border: 1px solid rgba(96,165,250,.22);
+        background: rgba(37,99,235,.12);
+        color: #cbd5e1;
+        border-radius: 999px;
+        padding: 9px 12px;
+        font-size: .86rem;
+        margin: 8px 0 2px 0;
+    }
+    .sidebar-section-label {
+        color: #93c5fd;
+        font-weight: 800;
+        font-size: .82rem;
+        margin: 4px 0 8px 0;
+        letter-spacing: .02em;
+    }
+    .course-hero-grid {
+        display: grid;
+        grid-template-columns: 1.2fr .8fr;
+        gap: 18px;
+        margin-bottom: 18px;
+    }
+    .course-card-main {
+        border-radius: 28px;
+        padding: 26px;
+        border: 1px solid rgba(96,165,250,.24);
+        background: radial-gradient(circle at 10% 10%, rgba(37,99,235,.22), transparent 34%),
+                    linear-gradient(135deg, rgba(15,23,42,.96), rgba(30,41,59,.90));
+        box-shadow: 0 18px 42px rgba(0,0,0,.24);
+    }
+    .course-card-main h2 {color: #ffffff; margin: 0 0 10px 0; font-size: 1.55rem;}
+    .course-card-main p {color: #cbd5e1; line-height: 1.65; margin: 0 0 16px 0;}
+    .progress-shell {
+        height: 12px;
+        background: rgba(148,163,184,.18);
+        border-radius: 999px;
+        overflow: hidden;
+        border: 1px solid rgba(148,163,184,.16);
+    }
+    .progress-fill {
+        width: 42%;
+        height: 100%;
+        background: linear-gradient(90deg, #2563eb, #38bdf8);
+        border-radius: 999px;
+    }
+    .mini-stat-stack {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .mini-stat {
+        border: 1px solid rgba(148,163,184,.20);
+        background: rgba(15,23,42,.72);
+        border-radius: 20px;
+        padding: 16px;
+    }
+    .mini-stat .label {color: #94a3b8; font-size: .82rem; font-weight: 700;}
+    .mini-stat .value {color: #f8fafc; font-size: 1.35rem; font-weight: 900; margin-top: 4px;}
+    .learning-card:hover, .routine-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(147,197,253,.42);
+        transition: all .16s ease;
+    }
+    .focus-strip {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin: 10px 0 20px 0;
+    }
+    .focus-item {
+        background: rgba(15,23,42,.70);
+        border: 1px solid rgba(148,163,184,.18);
+        border-radius: 18px;
+        padding: 14px;
+        color: #cbd5e1;
+        min-height: 92px;
+    }
+    .focus-item b {display:block; color: #f8fafc; margin-bottom: 6px;}
+    @media (max-width: 900px) {
+        .course-hero-grid {grid-template-columns: 1fr;}
+        .focus-strip {grid-template-columns: 1fr 1fr;}
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -408,12 +514,25 @@ def init_session_defaults() -> None:
     st.session_state.setdefault("authenticated", False)
     st.session_state.setdefault("login_error", "")
     st.session_state.setdefault("active_page", "대시보드")
-    st.session_state.setdefault("nav_radio", st.session_state.get("active_page", "대시보드"))
+    st.session_state.setdefault("page_selector", st.session_state.get("active_page", "대시보드"))
     st.session_state.setdefault("last_whitepaper_upload_sig", "")
     if st.session_state["active_page"] not in MENU_OPTIONS:
         st.session_state["active_page"] = "대시보드"
-    if st.session_state.get("nav_radio") not in MENU_OPTIONS:
-        st.session_state["nav_radio"] = st.session_state["active_page"]
+    if st.session_state.get("page_selector") not in MENU_OPTIONS:
+        st.session_state["page_selector"] = st.session_state["active_page"]
+
+
+def set_active_page(page_name: str) -> None:
+    """사이드바와 대시보드 버튼의 페이지 상태를 한 번에 맞춥니다."""
+    if page_name not in MENU_OPTIONS:
+        page_name = "대시보드"
+    st.session_state["active_page"] = page_name
+    st.session_state["page_selector"] = page_name
+
+
+def sync_page_from_sidebar() -> None:
+    """사이드바 라디오 선택값을 본문 라우팅 상태에 반영합니다."""
+    set_active_page(st.session_state.get("page_selector", "대시보드"))
 
 
 def authenticate(login_id: str, login_password: str) -> bool:
@@ -993,7 +1112,7 @@ def render_login_page() -> None:
             if authenticate(login_id.strip(), login_password):
                 st.session_state["authenticated"] = True
                 st.session_state["login_error"] = ""
-                st.session_state["active_page"] = "대시보드"
+                set_active_page("대시보드")
                 st.rerun()
             else:
                 st.session_state["login_error"] = "아이디 또는 비밀번호가 일치하지 않습니다."
@@ -1021,31 +1140,42 @@ def render_header_metrics() -> None:
 
 
 def render_sidebar() -> str:
-    st.sidebar.markdown("## 🧭 AIVLE 학습도우미")
-    st.sidebar.caption("학습자 모드")
+    st.sidebar.markdown("""
+    <div class='sidebar-brand'>
+        <div class='brand-mark'>A</div>
+        <div>
+            <div class='brand-title'>AIVLE 학습도우미</div>
+            <div class='brand-sub'>학습자 모드</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     if st.sidebar.button("로그아웃", use_container_width=True):
         st.session_state["authenticated"] = False
         st.session_state["login_error"] = ""
         st.rerun()
 
     st.sidebar.divider()
-    # 사이드바 메뉴와 본문 버튼 이동 상태를 분리해 한 번 클릭으로 이동되게 고정합니다.
-    target_page = st.session_state.get("active_page", "대시보드")
-    if target_page not in MENU_OPTIONS:
-        target_page = "대시보드"
-    if st.session_state.get("nav_radio") != target_page:
-        st.session_state["nav_radio"] = target_page
+    current_page = st.session_state.get("active_page", "대시보드")
+    if current_page not in MENU_OPTIONS:
+        current_page = "대시보드"
+        set_active_page(current_page)
 
+    st.session_state["page_selector"] = current_page
     page = st.sidebar.radio(
         "학습 메뉴",
         MENU_OPTIONS,
-        key="nav_radio",
+        key="page_selector",
+        on_change=sync_page_from_sidebar,
     )
-    st.session_state["active_page"] = page
+    page = st.session_state.get("active_page", page)
+
+    st.sidebar.markdown(f"<div class='current-page-pill'>현재 화면 · <b>{page}</b></div>", unsafe_allow_html=True)
     st.sidebar.divider()
 
     if st.sidebar.button("새 학습 대화", use_container_width=True):
         create_conversation()
+        set_active_page("학습 질의")
         st.rerun()
 
     conversations = load_conversations()
@@ -1070,7 +1200,8 @@ def render_sidebar() -> str:
         st.rerun()
 
     st.sidebar.divider()
-    uploaded = st.sidebar.file_uploader("학습 자료 업로드", type=["docx"])
+    st.sidebar.markdown("<div class='sidebar-section-label'>학습 자료</div>", unsafe_allow_html=True)
+    uploaded = st.sidebar.file_uploader("DOCX 백서 업로드", type=["docx"])
     if uploaded:
         sig = upload_signature(uploaded)
         if sig != st.session_state.get("last_whitepaper_upload_sig"):
@@ -1084,83 +1215,83 @@ def render_sidebar() -> str:
 
     return page
 
-
 # ============================================================
 # 페이지
 # ============================================================
 
 def page_dashboard() -> None:
-    hero("AIVLE 학습도우미", "질문·예습·진단·복습을 한 흐름으로 연결하는 백서 기반 학습 공간입니다.")
-    render_header_metrics()
+    hero("AIVLE 학습도우미", "강의 전 예습, 수업 중 질문, 수업 후 복습을 한 화면에서 이어가는 학습 공간입니다.")
+
+    index = load_index()
+    chunk_count = len(index["chunks"]) if index else 0
+    conv_count = len(load_conversations())
+    result_count = len(read_json(RESULT_PATH, []))
+    wrong_count = len(read_json(WRONG_NOTE_PATH, []))
 
     st.markdown(
-        """
-        <div class='study-banner'>
-            <strong>오늘의 학습 루틴</strong> · ① 궁금한 내용 질문 → ② 예습 자료 확인 → ③ 쪽지시험으로 점검 → ④ 오답노트로 복습
+        f"""
+        <div class='course-hero-grid'>
+            <div class='course-card-main'>
+                <div class='tag'>백서 기반</div><div class='tag'>예습·진단·복습</div><div class='tag'>학습자 전용</div>
+                <h2>오늘은 질문 1개, 예습 1개, 복습 1개만 완료하세요.</h2>
+                <p>추천 질문으로 막힌 개념을 확인하고, 쪽지시험으로 이해도를 점검한 뒤 오답노트로 약점을 정리하는 흐름으로 구성했습니다.</p>
+                <div class='progress-shell'><div class='progress-fill'></div></div>
+                <p class='small-note' style='margin-top:10px;'>권장 루틴 진행률 예시 · 질문 → 예습 → 진단 → 복습</p>
+            </div>
+            <div class='mini-stat-stack'>
+                <div class='mini-stat'><div class='label'>검색 가능한 백서 청크</div><div class='value'>{chunk_count:,}</div></div>
+                <div class='mini-stat'><div class='label'>저장된 학습 대화</div><div class='value'>{conv_count:,}</div></div>
+                <div class='mini-stat'><div class='label'>진단 기록 / 오답노트</div><div class='value'>{result_count:,} / {wrong_count:,}</div></div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown("<div class='section-title'>빠른 시작</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>바로 시작</div>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("<div class='routine-card'><span>STEP 01</span><br><b>질문으로 시작</b><p>추천 질문을 눌러 백서 기반 답변을 바로 확인합니다.</p></div>", unsafe_allow_html=True)
-        if st.button("학습 질문 열기", use_container_width=True):
+        if st.button("질문 화면으로 이동", use_container_width=True):
             st.session_state["pending_chat"] = "에이블스쿨 전체 학습 흐름을 요약해줘"
-            st.session_state["active_page"] = "학습 질의"
+            set_active_page("학습 질의")
             st.rerun()
     with col2:
-        st.markdown("<div class='routine-card'><span>STEP 02</span><br><b>예습 자료 만들기</b><p>주차와 주제를 선택해 수업 전 핵심 개념을 정리합니다.</p></div>", unsafe_allow_html=True)
-        if st.button("예습·쪽지시험 열기", use_container_width=True):
-            st.session_state["active_page"] = "예습·쪽지시험"
+        st.markdown("<div class='routine-card'><span>STEP 02</span><br><b>예습 자료 만들기</b><p>수업 전 핵심 개념, 체크포인트, 예상 질문을 정리합니다.</p></div>", unsafe_allow_html=True)
+        if st.button("예습 화면으로 이동", use_container_width=True):
+            set_active_page("예습·쪽지시험")
             st.rerun()
     with col3:
-        st.markdown("<div class='routine-card'><span>STEP 03</span><br><b>일정 확인</b><p>수업, 스터디, 공모전 마감일을 한 곳에서 관리합니다.</p></div>", unsafe_allow_html=True)
-        if st.button("캘린더 열기", use_container_width=True):
-            st.session_state["active_page"] = "공고·캘린더"
+        st.markdown("<div class='routine-card'><span>STEP 03</span><br><b>일정 관리</b><p>수업, 스터디, 공모전 마감일을 한 곳에서 관리합니다.</p></div>", unsafe_allow_html=True)
+        if st.button("캘린더 화면으로 이동", use_container_width=True):
+            set_active_page("공고·캘린더")
             st.rerun()
 
-    st.markdown("<div class='section-title'>학습 기능</div>", unsafe_allow_html=True)
-    feature_cards = [
-        ("01", "학습 질의", "추천 질문과 직접 질문으로 백서 기반 답변을 생성합니다."),
-        ("02", "예습 지원", "주차별 학습 주제에 맞춰 핵심 개념과 체크포인트를 정리합니다."),
-        ("03", "수준 진단", "쪽지시험 결과로 초급·중급·고급 등급을 판별합니다."),
-        ("04", "맞춤 학습", "부족한 주제에 맞는 스터디 방식과 복습 경로를 제안합니다."),
-        ("05", "학습 분석", "주제별 정답률과 취약 영역을 시각적으로 확인합니다."),
-        ("06", "오답노트", "틀린 문제, 관련 개념, 해설을 저장해 반복 복습합니다."),
-        ("07", "공고·공모전", "학습 주제와 연결되는 외부 활동 정보를 정리합니다."),
-        ("08", "커리큘럼", "전체 교육 흐름과 현재 학습 위치를 빠르게 확인합니다."),
-    ]
-    for i in range(0, len(feature_cards), 4):
-        cols = st.columns(4)
-        for col, (num, title, desc) in zip(cols, feature_cards[i:i+4]):
-            col.markdown(
-                f"""
-                <div class='learning-card'>
-                    <div class='num'>{num}</div>
-                    <h3>{title}</h3>
-                    <p>{desc}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    st.markdown("<div class='section-title'>학습 흐름</div>", unsafe_allow_html=True)
-    st.dataframe(
-        pd.DataFrame(
-            [
-                ["질문", "추천 질문 / 빠른 질문", "궁금한 개념을 바로 확인"],
-                ["예습", "예습 자료 생성", "수업 전 핵심 개념 파악"],
-                ["진단", "쪽지시험 / 등급 판별", "현재 이해도 확인"],
-                ["복습", "오답노트 / 취약 주제", "약점 보완"],
-                ["확장", "공모전 / 캘린더", "실전 경험과 일정 관리"],
-            ],
-            columns=["단계", "기능", "효과"],
-        ),
-        hide_index=True,
-        use_container_width=True,
+    st.markdown("<div class='section-title'>학습자가 자주 쓰는 기능</div>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class='focus-strip'>
+            <div class='focus-item'><b>추천 질문</b>문장을 직접 쓰지 않아도 버튼으로 바로 질문합니다.</div>
+            <div class='focus-item'><b>예습 자료</b>주차별 주제를 수업 전 핵심 개념으로 바꿉니다.</div>
+            <div class='focus-item'><b>쪽지시험</b>이해도를 점수와 등급으로 확인합니다.</div>
+            <div class='focus-item'><b>오답노트</b>틀린 개념만 모아 반복 복습합니다.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
+    st.markdown("<div class='section-title'>전체 학습 흐름</div>", unsafe_allow_html=True)
+    flow_df = pd.DataFrame(
+        [
+            ["1", "학습 질의", "추천 질문 / 직접 질문", "백서 근거로 빠르게 이해"],
+            ["2", "예습", "주차별 예습 자료", "수업 전 개념 선파악"],
+            ["3", "진단", "쪽지시험 / 등급 판별", "현재 수준 확인"],
+            ["4", "복습", "오답노트 / 취약 주제", "약점 보완"],
+            ["5", "확장", "공모전 / 캘린더", "실전 경험 연결"],
+        ],
+        columns=["순서", "단계", "사용 기능", "목표"],
+    )
+    st.dataframe(flow_df, hide_index=True, use_container_width=True)
 
 def page_chat() -> None:
     hero("학습 질의", "강의 중 막히는 개념을 빠르게 묻고, 백서 근거와 함께 답변을 확인합니다.")
