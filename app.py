@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import json
 import os
 import re
+import textwrap
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -130,7 +132,7 @@ st.set_page_config(page_title=APP_TITLE, page_icon="📘", layout="wide", initia
 # 디자인: 밝은 학습 플랫폼 UI + Pretendard
 # ============================================================
 
-st.markdown(
+st.markdown(textwrap.dedent(
     """
     <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css');
@@ -467,12 +469,37 @@ st.markdown(
     [data-testid="stDataFrame"] { border-radius: 18px; overflow: hidden; }
     .danger-zone { border-left: 5px solid var(--error); background: #FFF7F6; }
 
+
+    .chat-shell {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: var(--shadow-soft);
+        padding: 14px 16px;
+        margin: 10px 0 14px 0;
+    }
+    .chat-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 12px;
+    }
+    .chat-title { font-weight: 900; color: #111827; }
+    .chat-hint { color: var(--muted); font-size: .84rem; }
+    .chat-window-note {
+        color: var(--muted);
+        font-size: .84rem;
+        margin: -2px 0 8px 0;
+    }
+
     @media (max-width: 1199px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .routine-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 767px) { .summary-grid, .routine-strip { grid-template-columns: 1fr; } .learning-hero { padding: 22px 18px; } .main .block-container { padding-left: .9rem; padding-right: .9rem; } }
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+    """
+).strip(), unsafe_allow_html=True)
 
 # ============================================================
 # 저장소 / 상태
@@ -484,6 +511,16 @@ class SearchHit:
     score: float
     title: str
     text: str
+
+
+def safe_text(value: Any) -> str:
+    """사용자 입력값이나 파일명 등이 HTML로 노출되지 않도록 이스케이프합니다."""
+    return html.escape(str(value or ""), quote=True)
+
+
+def html_block(markup: str) -> None:
+    """들여쓰기 때문에 HTML이 코드블록으로 보이는 문제를 방지합니다."""
+    st.markdown(textwrap.dedent(markup).strip(), unsafe_allow_html=True)
 
 
 def read_json(path: Path, default: Any) -> Any:
@@ -1346,73 +1383,61 @@ def save_career_report(title: str, report: str, report_type: str) -> None:
 # ============================================================
 
 
-def hero(title: str, body: str, kicker: str = "AIVLE 학습도우미") -> None:
-    st.markdown(
-        f"""
-        <div class='learning-hero'>
-            <div class='hero-kicker'>{kicker}</div>
-            <h1>{title}</h1>
-            <p>{body}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def hero(title: str, subtitle: str) -> None:
+    html_block(f"""
+    <div class='learning-hero'>
+        <div class='hero-kicker'>학습 플랫폼</div>
+        <h1>{safe_text(title)}</h1>
+        <p>{safe_text(subtitle)}</p>
+    </div>
+    """)
 
 
 def section(title: str, subtitle: str = "") -> None:
-    st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-title'>{safe_text(title)}</div>", unsafe_allow_html=True)
     if subtitle:
-        st.markdown(f"<div class='section-sub'>{subtitle}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-sub'>{safe_text(subtitle)}</div>", unsafe_allow_html=True)
 
 
 def small_help(text: str) -> None:
-    st.markdown(f"<div class='small-help'>{text}</div>", unsafe_allow_html=True)
+    st.caption(str(text))
 
 
 def status_badge(text: str, kind: str = "info") -> None:
     class_name = {"success": "badge-success", "warning": "badge-warning", "muted": "badge-muted"}.get(kind, "badge-info")
-    st.markdown(f"<span class='status-badge {class_name}'>{text}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='status-badge {class_name}'>{safe_text(text)}</span>", unsafe_allow_html=True)
 
 
 def notice_card(title: str, body: str, badge: str = "안내", kind: str = "info") -> None:
-    class_name = "danger-zone" if kind == "danger" else ""
-    st.markdown(
-        f"""
-        <div class='notice-card {class_name}'>
-            <span class='status-badge badge-info'>{badge}</span><br>
-            <b>{title}</b>
-            <p style='margin:.45rem 0 0;color:var(--muted);line-height:1.55;'>{body}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    border_kind = "danger-zone" if kind == "danger" else "notice-card"
+    html_block(f"""
+    <div class='{border_kind} notice-card'>
+        <span class='status-badge badge-info'>{safe_text(badge)}</span><br>
+        <b>{safe_text(title)}</b>
+        <p style='margin:.45rem 0 0;color:var(--muted);line-height:1.55;'>{safe_text(body)}</p>
+    </div>
+    """)
 
 
 def empty_state(title: str, body: str) -> None:
-    st.markdown(
-        f"""
-        <div class='empty-state'>
-            <b>{title}</b>
-            <p>{body}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    with st.container(border=True):
+        st.markdown(f"**{title}**")
+        st.caption(str(body))
 
 
 def summary_cards(items: List[Tuple[str, str, str]]) -> None:
-    cards = []
-    for label, value, hint in items:
-        cards.append(
-            f"""
-            <div class='summary-card'>
-                <div class='label'>{label}</div>
-                <div class='value'>{value}</div>
-                <div class='hint'>{hint}</div>
-            </div>
-            """
-        )
-    st.markdown("<div class='summary-grid'>" + "".join(cards) + "</div>", unsafe_allow_html=True)
+    """요약 카드를 Streamlit 네이티브 컨테이너로 표시합니다.
+    HTML 렌더링 실패 시 코드가 그대로 보이는 문제를 방지합니다.
+    """
+    if not items:
+        return
+    cols = st.columns(min(len(items), 4))
+    for idx, (label, value, hint) in enumerate(items):
+        with cols[idx % len(cols)]:
+            with st.container(border=True):
+                st.caption(str(label))
+                st.markdown(f"### {safe_text(value)}")
+                st.caption(str(hint))
 
 
 def ensure_whitepaper_ready() -> bool:
@@ -1429,17 +1454,16 @@ def render_sources(hits: List[SearchHit]) -> None:
         return
     with st.expander("백서 근거 보기", expanded=False):
         for idx, hit in enumerate(hits, start=1):
-            preview = hit.text.replace("\n", " ")[:520]
-            st.markdown(
-                f"""
-                <div class='source-box'>
-                    <b>근거 {idx} · {hit.title}</b><br>
-                    <span style='color:#64748b;font-size:.86rem;'>유사도 {hit.score:.3f} · 청크 {hit.index}</span>
-                    <p>{preview}{'...' if len(hit.text) > 520 else ''}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            preview = safe_text(hit.text.replace("\n", " ")[:520])
+            title = safe_text(hit.title)
+            ellipsis = "..." if len(hit.text) > 520 else ""
+            html_block(f"""
+            <div class='source-box'>
+                <b>근거 {idx} · {title}</b><br>
+                <span style='color:#64748b;font-size:.86rem;'>유사도 {hit.score:.3f} · 청크 {hit.index}</span>
+                <p>{preview}{ellipsis}</p>
+            </div>
+            """)
 
 
 def render_link_table(links: List[Dict[str, str]]) -> None:
@@ -1475,16 +1499,13 @@ def render_login_page() -> None:
     st.markdown("<br><br>", unsafe_allow_html=True)
     left, center, right = st.columns([1, 1.15, 1])
     with center:
-        st.markdown(
-            """
-            <div class='info-panel' style='padding:28px;'>
-                <div class='hero-kicker'>학습자 로그인</div>
-                <h2 style='margin:4px 0 8px 0;color:#111827;'>AIVLE 학습도우미</h2>
-                <p style='color:#64748b;'>제공받은 계정으로 로그인해 학습 질의, 예습, 진단, 복습, 취업 준비를 이용하세요.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        html_block("""
+        <div class='info-panel' style='padding:28px;'>
+            <div class='hero-kicker'>학습자 로그인</div>
+            <h2 style='margin:4px 0 8px 0;color:#111827;'>AIVLE 학습도우미</h2>
+            <p style='color:#64748b;'>제공받은 계정으로 로그인해 학습 질의, 예습, 진단, 복습, 취업 준비를 이용하세요.</p>
+        </div>
+        """)
         with st.form("login_form"):
             login_id = st.text_input("아이디")
             login_pw = st.text_input("비밀번호", type="password")
@@ -1505,18 +1526,15 @@ def render_sidebar() -> str:
         st.session_state["active_page"] = nav_target
     st.session_state["nav_target"] = None
 
-    st.sidebar.markdown(
-        """
-        <div class='sidebar-brand'>
-            <div class='brand-mark'>A</div>
-            <div>
-                <div class='brand-title'>AIVLE 학습도우미</div>
-                <div class='brand-sub'>학습자 모드</div>
-            </div>
+    st.sidebar.markdown(textwrap.dedent("""
+    <div class='sidebar-brand'>
+        <div class='brand-mark'>A</div>
+        <div>
+            <div class='brand-title'>AIVLE 학습도우미</div>
+            <div class='brand-sub'>학습자 모드</div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    </div>
+    """).strip(), unsafe_allow_html=True)
 
     meta = get_whitepaper_meta()
     path = get_whitepaper_path()
@@ -1624,17 +1642,14 @@ def page_dashboard() -> None:
         st.success("오늘의 체크리스트가 저장되었습니다.")
 
     section("학습 루틴", "처음 사용하는 경우 아래 순서대로 진행하면 됩니다.")
-    st.markdown(
-        """
-        <div class='routine-strip'>
-            <div class='routine-item'><span>STEP 01</span><b>질문하기</b><p>추천 질문으로 막힌 개념을 빠르게 확인합니다.</p></div>
-            <div class='routine-item'><span>STEP 02</span><b>예습하기</b><p>주차와 주제를 선택해 수업 전 핵심 내용을 정리합니다.</p></div>
-            <div class='routine-item'><span>STEP 03</span><b>진단하기</b><p>쪽지시험으로 현재 이해도를 점수와 등급으로 확인합니다.</p></div>
-            <div class='routine-item'><span>STEP 04</span><b>취업 연결</b><p>포트폴리오와 면접 질문으로 학습 경험을 정리합니다.</p></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    html_block("""
+    <div class='routine-strip'>
+        <div class='routine-item'><span>STEP 01</span><b>질문하기</b><p>추천 질문으로 막힌 개념을 빠르게 확인합니다.</p></div>
+        <div class='routine-item'><span>STEP 02</span><b>예습하기</b><p>주차와 주제를 선택해 수업 전 핵심 내용을 정리합니다.</p></div>
+        <div class='routine-item'><span>STEP 03</span><b>진단하기</b><p>쪽지시험으로 현재 이해도를 점수와 등급으로 확인합니다.</p></div>
+        <div class='routine-item'><span>STEP 04</span><b>취업 연결</b><p>포트폴리오와 면접 질문으로 학습 경험을 정리합니다.</p></div>
+    </div>
+    """)
 
     section("바로 시작")
     c1, c2, c3 = st.columns(3)
@@ -1685,31 +1700,46 @@ def page_chat() -> None:
 
     conv_id = current_conversation_id()
     conversations = load_conversations()
-    messages = conversations[conv_id].get("messages", [])
+    messages = conversations.get(conv_id, {}).get("messages", [])
     st.divider()
+
+    toolbar_left, toolbar_right = st.columns([3, 1])
+    with toolbar_left:
+        section("대화창", "대화는 고정된 박스 안에서만 쌓입니다. 페이지 전체가 길어지지 않도록 최근 대화부터 확인할 수 있습니다.")
+    with toolbar_right:
+        if st.button("대화 초기화", use_container_width=True, type="secondary"):
+            conversations = load_conversations()
+            conversations.setdefault(conv_id, {"title": "새 학습 대화", "messages": [], "created_at": datetime.now().isoformat(timespec="seconds")})
+            conversations[conv_id]["messages"] = []
+            conversations[conv_id]["title"] = "새 학습 대화"
+            conversations[conv_id]["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            save_conversations(conversations)
+            st.session_state.pop("pending_chat", None)
+            st.rerun()
 
     if not messages:
         empty_state("아직 대화가 없습니다", "추천 질문을 누르거나 아래 입력창에 질문을 입력하면 백서 근거를 찾아 답변합니다.")
 
-    for msg in messages:
-        with st.chat_message(msg.get("role", "assistant")):
-            st.markdown(msg.get("content", ""))
-            sources = msg.get("sources") or []
-            if sources:
-                render_sources([SearchHit(**src) for src in sources])
+    st.caption("최근 30개 메시지만 대화창에 표시됩니다. 이전 내용은 대화 목록에 저장됩니다.")
+    chat_box = st.container(height=520, border=True)
+    with chat_box:
+        for msg in messages[-30:]:
+            role = msg.get("role", "assistant")
+            with st.chat_message(role):
+                st.markdown(msg.get("content", ""))
+                sources = msg.get("sources") or []
+                if sources:
+                    try:
+                        render_sources([SearchHit(**src) for src in sources])
+                    except Exception:
+                        notice_card("근거 표시 생략", "저장된 근거 형식이 맞지 않아 답변 본문만 표시합니다.", badge="근거")
 
     pending = st.session_state.pop("pending_chat", None)
     question = pending or st.chat_input("백서 기준으로 질문을 입력하세요")
     if question:
         append_message(conv_id, "user", question)
-        with st.chat_message("user"):
-            st.markdown(question)
-        with st.chat_message("assistant"):
-            with st.spinner("백서에서 근거를 찾고 답변을 생성하는 중입니다."):
-                answer, hits, links = answer_from_whitepaper(question)
-            st.markdown(answer)
-            render_sources(hits)
-            render_link_table(links)
+        with st.spinner("백서에서 근거를 찾고 답변을 생성하는 중입니다."):
+            answer, hits, links = answer_from_whitepaper(question)
         append_message(conv_id, "assistant", answer, sources=[hit.__dict__ for hit in hits])
         st.rerun()
 
