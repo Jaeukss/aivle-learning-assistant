@@ -168,6 +168,90 @@ st.markdown(
         background: rgba(15,23,42,.72);
         margin: 6px 0;
     }
+
+    /* 학습 플랫폼형 UI 보강 */
+    .section-title {
+        font-size: 1.18rem;
+        font-weight: 800;
+        color: #f8fafc;
+        margin: 18px 0 10px 0;
+        letter-spacing: -0.02em;
+    }
+    .learning-card {
+        min-height: 150px;
+        border: 1px solid rgba(96,165,250,.22);
+        background: linear-gradient(180deg, rgba(15,23,42,.92), rgba(2,6,23,.86));
+        border-radius: 24px;
+        padding: 20px 20px 18px 20px;
+        box-shadow: 0 14px 32px rgba(0,0,0,.22);
+        margin-bottom: 12px;
+    }
+    .learning-card h3 {
+        color: #f8fafc;
+        font-size: 1.05rem;
+        margin: 0 0 8px 0;
+    }
+    .learning-card p {
+        color: #cbd5e1;
+        margin: 0;
+        line-height: 1.55;
+        font-size: .94rem;
+    }
+    .learning-card .num {
+        color: #93c5fd;
+        font-size: .82rem;
+        font-weight: 800;
+        margin-bottom: 8px;
+    }
+    .routine-card {
+        border: 1px solid rgba(148,163,184,.20);
+        background: rgba(15,23,42,.70);
+        border-radius: 20px;
+        padding: 16px 18px;
+        min-height: 118px;
+        margin-bottom: 12px;
+    }
+    .routine-card b {color: #f8fafc;}
+    .routine-card span {color: #93c5fd; font-weight: 800; font-size: .78rem;}
+    .routine-card p {color: #cbd5e1; margin: 8px 0 0 0; font-size: .9rem; line-height: 1.5;}
+    .study-banner {
+        border: 1px solid rgba(96,165,250,.24);
+        background: linear-gradient(90deg, rgba(37,99,235,.18), rgba(14,165,233,.08));
+        border-radius: 22px;
+        padding: 18px 20px;
+        color: #dbeafe;
+        margin: 14px 0 18px 0;
+    }
+    .study-banner strong {color: #ffffff;}
+    div.stButton > button {
+        border-radius: 14px;
+        border: 1px solid rgba(96,165,250,.28);
+        background: linear-gradient(180deg, rgba(30,64,175,.94), rgba(37,99,235,.94));
+        color: #ffffff;
+        font-weight: 750;
+        min-height: 2.8rem;
+        box-shadow: 0 8px 18px rgba(37,99,235,.20);
+    }
+    div.stButton > button:hover {
+        border-color: rgba(147,197,253,.65);
+        transform: translateY(-1px);
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
+        border-radius: 14px;
+        padding: 9px 10px;
+        margin: 3px 0;
+        background: rgba(15,23,42,.35);
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+        background: rgba(37,99,235,.22);
+    }
+    section[data-testid="stSidebar"] .stSelectbox,
+    section[data-testid="stSidebar"] .stFileUploader {
+        background: rgba(15,23,42,.34);
+        border-radius: 14px;
+        padding: 4px;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -324,9 +408,12 @@ def init_session_defaults() -> None:
     st.session_state.setdefault("authenticated", False)
     st.session_state.setdefault("login_error", "")
     st.session_state.setdefault("active_page", "대시보드")
+    st.session_state.setdefault("nav_radio", st.session_state.get("active_page", "대시보드"))
     st.session_state.setdefault("last_whitepaper_upload_sig", "")
     if st.session_state["active_page"] not in MENU_OPTIONS:
         st.session_state["active_page"] = "대시보드"
+    if st.session_state.get("nav_radio") not in MENU_OPTIONS:
+        st.session_state["nav_radio"] = st.session_state["active_page"]
 
 
 def authenticate(login_id: str, login_password: str) -> bool:
@@ -942,10 +1029,17 @@ def render_sidebar() -> str:
         st.rerun()
 
     st.sidebar.divider()
+    # 사이드바 메뉴와 본문 버튼 이동 상태를 분리해 한 번 클릭으로 이동되게 고정합니다.
+    target_page = st.session_state.get("active_page", "대시보드")
+    if target_page not in MENU_OPTIONS:
+        target_page = "대시보드"
+    if st.session_state.get("nav_radio") != target_page:
+        st.session_state["nav_radio"] = target_page
+
     page = st.sidebar.radio(
-        "메뉴",
+        "학습 메뉴",
         MENU_OPTIONS,
-        index=MENU_OPTIONS.index(st.session_state.get("active_page", "대시보드")),
+        key="nav_radio",
     )
     st.session_state["active_page"] = page
     st.sidebar.divider()
@@ -996,47 +1090,84 @@ def render_sidebar() -> str:
 # ============================================================
 
 def page_dashboard() -> None:
-    hero("AIVLE 학습도우미", "백서를 기반으로 질문, 예습, 수준진단, 복습, 일정, 외부활동 관리를 한 화면에서 연결합니다.")
+    hero("AIVLE 학습도우미", "질문·예습·진단·복습을 한 흐름으로 연결하는 백서 기반 학습 공간입니다.")
     render_header_metrics()
-    st.markdown("### 기능 구성")
-    rows = [
-        ["학습 질의", "추천 질문 / 빠른 질문 버튼", "질문 작성 없이 백서 기반 답변 생성"],
-        ["예습 지원", "예습 자료 생성", "주차·주제별 핵심 개념 사전 파악"],
-        ["수준 진단", "쪽지시험 생성 및 등급 판별", "초급·중급·고급 기준 학습 경로 제시"],
-        ["맞춤 학습", "수준별 스터디 추천", "취약 주제 중심 학습 전략 제공"],
-        ["학습 분석", "부족한 주제 시각화", "주제별 정답률 확인"],
-        ["복습 지원", "오답노트", "틀린 문제·개념·해설 저장"],
-        ["정보 추천", "공고 정리 / 공모전 추천", "외부 경험과 학습 주제 연결"],
-        ["일정 관리", "캘린더", "수업·시험·스터디·마감일 통합 관리"],
-        ["커리큘럼 관리", "커리큘럼 확인", "현재 위치와 다음 학습 내용 파악"],
-        ["대화 관리", "대화 목록 저장", "이전 학습 흐름 재개"],
-        ["자료 추천", "학습 사이트 링크 추천", "백서 링크와 공식 사이트 연결"],
-    ]
-    st.dataframe(pd.DataFrame(rows, columns=["구분", "기능명", "앱 구현 방식"]), hide_index=True, use_container_width=True)
 
-    st.markdown("### 빠른 시작")
+    st.markdown(
+        """
+        <div class='study-banner'>
+            <strong>오늘의 학습 루틴</strong> · ① 궁금한 내용 질문 → ② 예습 자료 확인 → ③ 쪽지시험으로 점검 → ④ 오답노트로 복습
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<div class='section-title'>빠른 시작</div>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("질문으로 시작", use_container_width=True):
+        st.markdown("<div class='routine-card'><span>STEP 01</span><br><b>질문으로 시작</b><p>추천 질문을 눌러 백서 기반 답변을 바로 확인합니다.</p></div>", unsafe_allow_html=True)
+        if st.button("학습 질문 열기", use_container_width=True):
             st.session_state["pending_chat"] = "에이블스쿨 전체 학습 흐름을 요약해줘"
             st.session_state["active_page"] = "학습 질의"
             st.rerun()
     with col2:
-        if st.button("예습 자료 만들기", use_container_width=True):
+        st.markdown("<div class='routine-card'><span>STEP 02</span><br><b>예습 자료 만들기</b><p>주차와 주제를 선택해 수업 전 핵심 개념을 정리합니다.</p></div>", unsafe_allow_html=True)
+        if st.button("예습·쪽지시험 열기", use_container_width=True):
             st.session_state["active_page"] = "예습·쪽지시험"
             st.rerun()
     with col3:
-        if st.button("캘린더 보기", use_container_width=True):
+        st.markdown("<div class='routine-card'><span>STEP 03</span><br><b>일정 확인</b><p>수업, 스터디, 공모전 마감일을 한 곳에서 관리합니다.</p></div>", unsafe_allow_html=True)
+        if st.button("캘린더 열기", use_container_width=True):
             st.session_state["active_page"] = "공고·캘린더"
             st.rerun()
 
+    st.markdown("<div class='section-title'>학습 기능</div>", unsafe_allow_html=True)
+    feature_cards = [
+        ("01", "학습 질의", "추천 질문과 직접 질문으로 백서 기반 답변을 생성합니다."),
+        ("02", "예습 지원", "주차별 학습 주제에 맞춰 핵심 개념과 체크포인트를 정리합니다."),
+        ("03", "수준 진단", "쪽지시험 결과로 초급·중급·고급 등급을 판별합니다."),
+        ("04", "맞춤 학습", "부족한 주제에 맞는 스터디 방식과 복습 경로를 제안합니다."),
+        ("05", "학습 분석", "주제별 정답률과 취약 영역을 시각적으로 확인합니다."),
+        ("06", "오답노트", "틀린 문제, 관련 개념, 해설을 저장해 반복 복습합니다."),
+        ("07", "공고·공모전", "학습 주제와 연결되는 외부 활동 정보를 정리합니다."),
+        ("08", "커리큘럼", "전체 교육 흐름과 현재 학습 위치를 빠르게 확인합니다."),
+    ]
+    for i in range(0, len(feature_cards), 4):
+        cols = st.columns(4)
+        for col, (num, title, desc) in zip(cols, feature_cards[i:i+4]):
+            col.markdown(
+                f"""
+                <div class='learning-card'>
+                    <div class='num'>{num}</div>
+                    <h3>{title}</h3>
+                    <p>{desc}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("<div class='section-title'>학습 흐름</div>", unsafe_allow_html=True)
+    st.dataframe(
+        pd.DataFrame(
+            [
+                ["질문", "추천 질문 / 빠른 질문", "궁금한 개념을 바로 확인"],
+                ["예습", "예습 자료 생성", "수업 전 핵심 개념 파악"],
+                ["진단", "쪽지시험 / 등급 판별", "현재 이해도 확인"],
+                ["복습", "오답노트 / 취약 주제", "약점 보완"],
+                ["확장", "공모전 / 캘린더", "실전 경험과 일정 관리"],
+            ],
+            columns=["단계", "기능", "효과"],
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
 
 def page_chat() -> None:
-    hero("학습 질의", "추천 질문 버튼 또는 직접 질문으로 백서 기반 답변을 생성하고 대화 목록에 저장합니다.")
+    hero("학습 질의", "강의 중 막히는 개념을 빠르게 묻고, 백서 근거와 함께 답변을 확인합니다.")
     if not ensure_whitepaper_ready():
         return
 
-    st.markdown("### 추천 질문")
+    st.markdown("<div class='section-title'>추천 질문</div>", unsafe_allow_html=True)
     tabs = st.tabs(list(QUICK_QUESTION_GROUPS.keys()))
     for tab, (_, questions) in zip(tabs, QUICK_QUESTION_GROUPS.items()):
         with tab:
