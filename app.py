@@ -611,6 +611,30 @@ st.markdown(textwrap.dedent(
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    .calendar-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 8px 0 12px 0;
+    }
+    .calendar-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: #FFFFFF;
+        padding: 5px 10px;
+        color: var(--text);
+        font-size: .8rem;
+        font-weight: 850;
+    }
+    .calendar-legend i {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+    }
 
     @media (max-width: 1199px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .routine-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 767px) { .summary-grid, .routine-strip { grid-template-columns: 1fr; } .learning-hero { padding: 22px 18px; } .main .block-container { padding-left: .9rem; padding-right: .9rem; } }
@@ -2542,19 +2566,89 @@ def calendar_kind_color(kind: str) -> str:
         "진단": "#C9822B",
         "취업": "#B94A48",
         "프로젝트": "#DFAE43",
+        "미니프로젝트": "#2F6F5E",
+        "빅프로젝트": "#3B6EA8",
+        "오리엔테이션": "#6C7A89",
     }
     return palette.get(str(kind or ""), "#6C7A89")
 
 
 def curriculum_event_color(kind: str, index: int) -> str:
     text = str(kind or "")
-    if "프로젝트" in text:
+    if "미니프로젝트" in text:
         return ["#2F6F5E", "#3B6EA8"][index % 2]
+    if "빅프로젝트" in text or "프로젝트" in text:
+        return ["#3B6EA8", "#2F6F5E"][index % 2]
     if "수업" in text:
         return ["#D97706", "#7C3AED"][index % 2]
+    if "오리엔테이션" in text:
+        return "#6C7A89"
     if "취업" in text:
         return "#B94A48"
     return calendar_kind_color(text)
+
+
+def curriculum_segment_kind(segment: str, row_kind: str) -> str:
+    text = str(segment or "")
+    base_kind = str(row_kind or "")
+    if "빅프로젝트" in text:
+        return "빅프로젝트"
+    if "미니프로젝트" in text:
+        return "미니프로젝트"
+    if "입교식" in text or "오리엔테이션" in text:
+        return "오리엔테이션"
+    if "취업" in text or "수료식" in text:
+        return "취업"
+    if base_kind == "프로젝트":
+        return "수업"
+    return base_kind or "수업"
+
+
+def curriculum_topic_segments(topic: str) -> List[Tuple[str, str]]:
+    raw_parts = [part.strip() for part in re.split(r"\s*\+\s*", str(topic or "")) if part.strip()]
+    if not raw_parts:
+        return []
+    segments: List[Tuple[str, str]] = []
+    previous_subject = ""
+    for part in raw_parts:
+        title = part
+        if part == "미니프로젝트" and previous_subject:
+            title = f"{previous_subject} 미니프로젝트"
+        kind = curriculum_segment_kind(title, "")
+        if kind not in {"미니프로젝트", "빅프로젝트"}:
+            previous_subject = re.sub(r"\s*(미니프로젝트|빅프로젝트)\s*", "", title).strip() or previous_subject
+        segments.append((kind, title))
+    return segments
+
+
+def split_date_ranges(start: str, end: str, count: int) -> List[Tuple[str, str]]:
+    if count <= 1:
+        return [(start, end)]
+    start_dt = date.fromisoformat(start)
+    end_dt = date.fromisoformat(end)
+    total_days = max(1, (end_dt - start_dt).days)
+    ranges: List[Tuple[str, str]] = []
+    cursor = start_dt
+    for idx in range(count):
+        remaining_segments = count - idx
+        remaining_days = max(1, (end_dt - cursor).days)
+        span = max(1, round(remaining_days / remaining_segments))
+        next_cursor = end_dt if idx == count - 1 else min(end_dt, cursor + timedelta(days=span))
+        ranges.append((cursor.isoformat(), next_cursor.isoformat()))
+        cursor = next_cursor
+    return ranges
+
+
+def render_calendar_legend() -> None:
+    html_block("""
+    <div class='calendar-legend'>
+        <span><i style='background:#D97706;'></i>수업</span>
+        <span><i style='background:#7C3AED;'></i>수업 보조</span>
+        <span><i style='background:#2F6F5E;'></i>미니프로젝트</span>
+        <span><i style='background:#3B6EA8;'></i>프로젝트</span>
+        <span><i style='background:#B94A48;'></i>취업·마감</span>
+    </div>
+    """)
 
 
 def normalize_calendar_date(value: Any) -> Optional[str]:
@@ -2581,19 +2675,24 @@ def curriculum_calendar_events(rows: List[Dict[str, Any]]) -> List[Dict[str, Any
         start, end = parse_curriculum_period(str(row.get("period", "")))
         if not start:
             continue
-        kind = str(row.get("kind", "커리큘럼"))
         topic = str(row.get("topic", "커리큘럼"))
         week = str(row.get("week", ""))
-        color = curriculum_event_color(kind, idx)
-        events.append({
-            "id": f"curriculum_{idx}",
-            "title": f"{week} · {topic}".strip(" ·"),
-            "date": start,
-            "end": end,
-            "kind": kind or "커리큘럼",
-            "note": str(row.get("note", "")),
-            "color": color,
-        })
+        row_kind = str(row.get("kind", "커리큘럼"))
+        segments = curriculum_topic_segments(topic) or [(curriculum_segment_kind(topic, row_kind), topic)]
+        ranges = split_date_ranges(start, end, len(segments))
+        for segment_idx, ((segment_kind, segment_title), (segment_start, segment_end)) in enumerate(zip(segments, ranges)):
+            color = curriculum_event_color(segment_kind, idx + segment_idx)
+            events.append({
+                "id": f"curriculum_{idx}_{segment_idx}",
+                "title": f"{week} · {segment_title}".strip(" ·"),
+                "date": segment_start,
+                "end": segment_end,
+                "kind": segment_kind or row_kind or "커리큘럼",
+                "note": str(row.get("note", "")),
+                "color": color,
+                "week": week,
+                "period": str(row.get("period", "")),
+            })
     return events
 
 
@@ -2711,28 +2810,28 @@ def render_fallback_month_calendar(events: List[Dict[str, Any]], year: int, mont
 def render_month_calendar(events: List[Dict[str, Any]], year: int, month: int, key_prefix: str = "calendar_component") -> None:
     component_events = to_calendar_component_events(events)
     initial_date = f"{year:04d}-{month:02d}-01"
+    render_fallback_month_calendar(events, year, month)
     if streamlit_calendar is not None:
         try:
-            streamlit_calendar(
-                events=component_events,
-                options={
-                    "initialView": "dayGridMonth",
-                    "initialDate": initial_date,
-                    "locale": "ko",
-                    "height": 620,
-                    "headerToolbar": {
-                        "left": "prev,next today",
-                        "center": "title",
-                        "right": "dayGridMonth,listMonth",
+            with st.expander("인터랙티브 캘린더", expanded=False):
+                streamlit_calendar(
+                    events=component_events,
+                    options={
+                        "initialView": "dayGridMonth",
+                        "initialDate": initial_date,
+                        "locale": "ko",
+                        "height": 620,
+                        "headerToolbar": {
+                            "left": "prev,next today",
+                            "center": "title",
+                            "right": "dayGridMonth",
+                        },
+                        "buttonText": {"today": "오늘", "month": "월"},
                     },
-                    "buttonText": {"today": "오늘", "month": "월", "list": "목록"},
-                },
-                key=f"{key_prefix}_{year}_{month}",
-            )
-            return
+                    key=f"{key_prefix}_{year}_{month}",
+                )
         except Exception:
             pass
-    render_fallback_month_calendar(events, year, month)
 
 
 def available_calendar_months(events: List[Dict[str, Any]]) -> List[str]:
@@ -2765,8 +2864,10 @@ def page_plan_curriculum() -> None:
             default_index = month_options.index(default_month) if default_month in month_options else 0
             selected_month = st.selectbox("표시할 월", month_options, index=default_index, key="curriculum_calendar_month")
             year, month = map(int, selected_month.split("-"))
+            render_calendar_legend()
             render_month_calendar(curriculum_events, year, month, key_prefix="curriculum_calendar")
-            st.dataframe(filtered[["week", "period", "kind", "topic", "note"]], hide_index=True, use_container_width=True)
+            event_view = pd.DataFrame(curriculum_events)
+            st.dataframe(event_view[["week", "period", "kind", "title", "date", "end", "note"]], hide_index=True, use_container_width=True)
         else:
             empty_state("표시할 커리큘럼이 없습니다", "검색어 또는 구분 필터를 조정해 주세요.")
         st.divider()
@@ -2800,6 +2901,24 @@ def page_plan_curriculum() -> None:
                 st.success("학습 계획이 캘린더에 추가되었습니다.")
 
     with tabs[2]:
+        events = read_calendar()
+        month_options = available_calendar_months(events)
+        default_month = date.today().strftime("%Y-%m")
+        default_index = month_options.index(default_month) if default_month in month_options else 0
+        selected_month = st.selectbox("표시할 월", month_options, index=default_index, key="calendar_month_filter")
+        year, month = map(int, selected_month.split("-"))
+
+        section("월간 캘린더")
+        render_calendar_legend()
+        render_month_calendar(events, year, month, key_prefix="schedule_calendar")
+
+        df = pd.DataFrame(events)
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            display = df[df["date"].dt.strftime("%Y-%m") == selected_month].sort_values("date")
+        else:
+            display = pd.DataFrame()
+
         left, right = st.columns([0.78, 1.22])
         with left:
             section("일정 추가")
@@ -2817,20 +2936,7 @@ def page_plan_curriculum() -> None:
                     else:
                         notice_card("일정명 필요", "일정명을 입력한 뒤 저장해 주세요.", badge="입력 확인", kind="warning")
 
-            events = read_calendar()
-            month_options = available_calendar_months(events)
-            default_month = date.today().strftime("%Y-%m")
-            default_index = month_options.index(default_month) if default_month in month_options else 0
-            selected_month = st.selectbox("표시할 월", month_options, index=default_index, key="calendar_month_filter")
-            year, month = map(int, selected_month.split("-"))
-
-            df = pd.DataFrame(events)
-            if not df.empty:
-                df["date"] = pd.to_datetime(df["date"], errors="coerce")
-                display = df[df["date"].dt.strftime("%Y-%m") == selected_month].sort_values("date")
-            else:
-                display = pd.DataFrame()
-
+        with right:
             section("해당 월 일정")
             if display.empty:
                 empty_state("해당 월 일정이 없습니다", "수업, 시험, 스터디, 공고 마감일을 추가해 학습 흐름을 관리하세요.")
@@ -2846,17 +2952,6 @@ def page_plan_curriculum() -> None:
                     if target and st.button("선택 일정 삭제"):
                         delete_calendar_event(target)
                         st.rerun()
-
-        with right:
-            section("월간 캘린더")
-            events = read_calendar()
-            selected_month = st.session_state.get("calendar_month_filter", date.today().strftime("%Y-%m"))
-            try:
-                year, month = map(int, selected_month.split("-"))
-            except Exception:
-                today = date.today()
-                year, month = today.year, today.month
-            render_month_calendar(events, year, month)
 
 
 def page_learning_status() -> None:
@@ -2888,6 +2983,7 @@ def page_learning_status() -> None:
         default_index = month_options.index(default_month) if default_month in month_options else 0
         selected_month = st.selectbox("표시할 월", month_options, index=default_index, key="status_calendar_month")
         year, month = map(int, selected_month.split("-"))
+        render_calendar_legend()
         render_month_calendar(status_events, year, month, key_prefix="status_calendar")
 
         df = pd.DataFrame(status_events)
