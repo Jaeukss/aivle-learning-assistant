@@ -210,7 +210,13 @@ st.markdown(textwrap.dedent(
     small, .small-help { color: var(--muted) !important; font-size: .82rem; line-height: 1.5; }
 
     header[data-testid="stHeader"] { background: transparent !important; }
-    [data-testid="stToolbar"], [data-testid="stStatusWidget"], [data-testid="stDeployButton"], .stDeployButton {
+    [data-testid="stToolbar"] {
+        display: flex !important;
+        visibility: visible !important;
+        height: auto !important;
+        pointer-events: auto !important;
+    }
+    [data-testid="stStatusWidget"], [data-testid="stDeployButton"], .stDeployButton {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
@@ -520,12 +526,50 @@ st.markdown(textwrap.dedent(
     }
 
 
-    [data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"] {
+    [data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"],
+    button[data-testid="stExpandSidebarButton"], [data-testid="stExpandSidebarButton"],
+    button[data-testid="stCollapseSidebarButton"], [data-testid="stCollapseSidebarButton"] {
         display: flex !important;
         visibility: visible !important;
         opacity: 1 !important;
         pointer-events: auto !important;
         z-index: 999999 !important;
+        position: fixed !important;
+        top: .75rem !important;
+        left: .75rem !important;
+        width: 2.65rem !important;
+        height: 2.65rem !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: #FFFFFF !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 999px !important;
+        box-shadow: var(--shadow) !important;
+    }
+    [data-testid="collapsedControl"] button,
+    [data-testid="stSidebarCollapsedControl"] button,
+    button[data-testid="stExpandSidebarButton"] *,
+    [data-testid="stExpandSidebarButton"] *,
+    button[data-testid="stCollapseSidebarButton"] *,
+    [data-testid="stCollapseSidebarButton"] * {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        color: var(--primary) !important;
+        background: transparent !important;
+    }
+    button[data-testid="stBaseButton-headerNoPadding"][kind="headerNoPadding"] {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        z-index: 999999 !important;
+        color: var(--primary) !important;
+    }
+    button[data-testid="stBaseButton-headerNoPadding"][kind="headerNoPadding"] * {
+        visibility: visible !important;
+        opacity: 1 !important;
+        color: var(--primary) !important;
     }
 
     .calendar-fallback {
@@ -2502,6 +2546,17 @@ def calendar_kind_color(kind: str) -> str:
     return palette.get(str(kind or ""), "#6C7A89")
 
 
+def curriculum_event_color(kind: str, index: int) -> str:
+    text = str(kind or "")
+    if "프로젝트" in text:
+        return ["#2F6F5E", "#3B6EA8"][index % 2]
+    if "수업" in text:
+        return ["#D97706", "#7C3AED"][index % 2]
+    if "취업" in text:
+        return "#B94A48"
+    return calendar_kind_color(text)
+
+
 def normalize_calendar_date(value: Any) -> Optional[str]:
     parsed = pd.to_datetime(value, errors="coerce")
     if pd.isna(parsed):
@@ -2529,6 +2584,7 @@ def curriculum_calendar_events(rows: List[Dict[str, Any]]) -> List[Dict[str, Any
         kind = str(row.get("kind", "커리큘럼"))
         topic = str(row.get("topic", "커리큘럼"))
         week = str(row.get("week", ""))
+        color = curriculum_event_color(kind, idx)
         events.append({
             "id": f"curriculum_{idx}",
             "title": f"{week} · {topic}".strip(" ·"),
@@ -2536,6 +2592,7 @@ def curriculum_calendar_events(rows: List[Dict[str, Any]]) -> List[Dict[str, Any
             "end": end,
             "kind": kind or "커리큘럼",
             "note": str(row.get("note", "")),
+            "color": color,
         })
     return events
 
@@ -2605,7 +2662,7 @@ def to_calendar_component_events(events: List[Dict[str, Any]]) -> List[Dict[str,
             continue
         kind = str(item.get("kind", "일정"))
         title = str(item.get("title", "일정"))
-        color = calendar_kind_color(kind)
+        color = str(item.get("color") or calendar_kind_color(kind))
         component_event = {
             "id": str(item.get("id", uuid.uuid4())),
             "title": f"[{kind}] {title}",
@@ -2613,6 +2670,7 @@ def to_calendar_component_events(events: List[Dict[str, Any]]) -> List[Dict[str,
             "allDay": True,
             "backgroundColor": color,
             "borderColor": color,
+            "textColor": "#FFFFFF",
         }
         end_date = str(item.get("end", ""))[:10]
         if re.match(r"^\d{4}-\d{2}-\d{2}$", end_date):
@@ -2640,7 +2698,8 @@ def render_fallback_month_calendar(events: List[Dict[str, Any]], year: int, mont
             for event in event_map.get(day_key, [])[:3]:
                 title = safe_text(event.get("title", "일정"))
                 kind = safe_text(event.get("kind", "일정"))
-                pills.append(f"<span class='calendar-event-pill'>[{kind}] {title}</span>")
+                color = safe_text(event.get("color") or calendar_kind_color(str(event.get("kind", ""))))
+                pills.append(f"<span class='calendar-event-pill' style='background:{color};border-color:{color};color:#fff;'>[{kind}] {title}</span>")
             if len(event_map.get(day_key, [])) > 3:
                 pills.append(f"<span class='calendar-event-pill'>+{len(event_map[day_key]) - 3}개</span>")
             rows.append(f"<td class='{muted}'><div class='day-num'>{day.day}</div>{''.join(pills)}</td>")
