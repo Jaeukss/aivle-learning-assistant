@@ -48,12 +48,19 @@ except Exception:
 APP_ROOT = Path(__file__).resolve().parent
 DATA_DIR = APP_ROOT / "data"
 STORE_DIR = APP_ROOT / "storage"
+WHITEPAPER_DIR = DATA_DIR / "whitepaper"
+UPLOAD_DIR = STORE_DIR / "uploads"
 DATA_DIR.mkdir(exist_ok=True)
 STORE_DIR.mkdir(exist_ok=True)
+WHITEPAPER_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 APP_TITLE = "AIVLE 학습도우미"
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-DEFAULT_WHITEPAPER_PATH = DATA_DIR / "aivle_kt_learning_whitepaper_2026.docx"
+CURRENT_WHITEPAPER_STEM = "current_whitepaper"
+WHITEPAPER_EXTENSIONS = {".docx", ".pdf", ".txt"}
+BUNDLED_WHITEPAPER_PATH = DATA_DIR / "aivle_kt_learning_whitepaper_2026.docx"
+DEFAULT_WHITEPAPER_PATH = WHITEPAPER_DIR / f"{CURRENT_WHITEPAPER_STEM}.docx"
 WHITEPAPER_META_PATH = STORE_DIR / "whitepaper_meta.json"
 CONVERSATION_PATH = STORE_DIR / "conversations.json"
 RESULT_PATH = STORE_DIR / "study_results.json"
@@ -61,6 +68,12 @@ WRONG_NOTE_PATH = STORE_DIR / "wrong_notes.json"
 CALENDAR_PATH = STORE_DIR / "calendar_events.json"
 CHECKLIST_PATH = STORE_DIR / "daily_checklist.json"
 CAREER_REPORT_PATH = STORE_DIR / "career_reports.json"
+
+try:
+    if not any(WHITEPAPER_DIR.glob(f"{CURRENT_WHITEPAPER_STEM}.*")) and BUNDLED_WHITEPAPER_PATH.exists():
+        DEFAULT_WHITEPAPER_PATH.write_bytes(BUNDLED_WHITEPAPER_PATH.read_bytes())
+except Exception:
+    pass
 
 MENU_OPTIONS = [
     "대시보드",
@@ -562,32 +575,65 @@ def get_login_credentials() -> Tuple[str, str]:
     )
 
 
+def is_managed_whitepaper_path(path: Path) -> bool:
+    try:
+        resolved_parent = path.resolve().parent
+        resolved_whitepaper_dir = WHITEPAPER_DIR.resolve()
+    except Exception:
+        return False
+    return (
+        resolved_parent == resolved_whitepaper_dir
+        and path.stem == CURRENT_WHITEPAPER_STEM
+        and path.suffix.lower() in WHITEPAPER_EXTENSIONS
+    )
+
+
+def current_uploaded_whitepaper_path() -> Optional[Path]:
+    candidates = [
+        path
+        for path in WHITEPAPER_DIR.glob(f"{CURRENT_WHITEPAPER_STEM}.*")
+        if path.is_file() and is_managed_whitepaper_path(path)
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def default_whitepaper_candidate() -> Path:
+    return current_uploaded_whitepaper_path() or DEFAULT_WHITEPAPER_PATH
+
+
 def get_whitepaper_meta() -> Dict[str, Any]:
+    fallback_path = default_whitepaper_candidate()
     default = {
-        "display_name": DEFAULT_WHITEPAPER_PATH.name,
-        "storage_path": str(DEFAULT_WHITEPAPER_PATH),
+        "display_name": fallback_path.name,
+        "storage_path": str(fallback_path),
         "updated_at": "",
-        "size_bytes": DEFAULT_WHITEPAPER_PATH.stat().st_size if DEFAULT_WHITEPAPER_PATH.exists() else 0,
+        "size_bytes": fallback_path.stat().st_size if fallback_path.exists() else 0,
     }
     meta = read_json(WHITEPAPER_META_PATH, default)
     if not isinstance(meta, dict):
         return default
     merged = {**default, **meta}
-    if not Path(str(merged.get("storage_path", ""))).exists() and DEFAULT_WHITEPAPER_PATH.exists():
-        merged["storage_path"] = str(DEFAULT_WHITEPAPER_PATH)
-        merged["display_name"] = DEFAULT_WHITEPAPER_PATH.name
+    meta_path = Path(str(merged.get("storage_path", "")))
+    if not (meta_path.exists() and is_managed_whitepaper_path(meta_path)):
+        merged["storage_path"] = str(fallback_path)
+        merged["display_name"] = fallback_path.name
+        merged["size_bytes"] = fallback_path.stat().st_size if fallback_path.exists() else 0
     return merged
 
 
 def get_whitepaper_path() -> Path:
     meta = get_whitepaper_meta()
     path = Path(str(meta.get("storage_path", DEFAULT_WHITEPAPER_PATH)))
-    if path.exists():
+    if path.exists() and (is_managed_whitepaper_path(path) or path == DEFAULT_WHITEPAPER_PATH):
         return path
-    return DEFAULT_WHITEPAPER_PATH
+    return default_whitepaper_candidate()
 
 
 def save_whitepaper_meta(display_name: str, path: Path, size_bytes: int) -> None:
+    if not is_managed_whitepaper_path(path):
+        raise ValueError("Whitepaper uploads must be stored as data/whitepaper/current_whitepaper.*")
     write_json(
         WHITEPAPER_META_PATH,
         {
@@ -604,7 +650,7 @@ def init_state() -> None:
     st.session_state.setdefault("login_error", "")
     st.session_state.setdefault("active_page", "대시보드")
     st.session_state.setdefault("nav_target", None)
-    st.session_state.setdefault("last_upload_sig", "")
+    st.session_state.setdefault("last_whitepaper_upload_sig", "")
     if st.session_state["active_page"] not in MENU_OPTIONS:
         st.session_state["active_page"] = "대시보드"
 
@@ -1032,6 +1078,11 @@ def make_context(hits: List[SearchHit]) -> str:
     return "\n\n---\n\n".join([f"[근거 {i}] 제목: {hit.title}\n내용:\n{hit.text}" for i, hit in enumerate(hits, start=1)])
 
 
+def career_whitepaper_guide(query: str, k: int = 4) -> str:
+    hits = search_whitepaper(query, k=k)
+    return make_context(hits)
+
+
 def official_notice_needed(question: str) -> bool:
     return any(keyword in question for keyword in OFFICIAL_NOTICE_KEYWORDS)
 
@@ -1271,9 +1322,14 @@ def study_recommendation(level: str, weak_topics: List[str]) -> str:
 
 
 def summarize_notice(notice_text: str, interests: str) -> Dict[str, str]:
+    guide = career_whitepaper_guide("취업지원 잡페어 포트폴리오 공모전 채용 프로젝트", k=3)
     system = "공고/공모전/채용형 프로그램 정보를 학습자 관점으로 정리합니다. JSON 객체만 반환합니다."
     user = f"""
 관심 분야: {interests}
+
+[백서 가이드 일부]
+{guide or '백서 가이드 없음'}
+
 공고 내용:
 {notice_text[:3500]}
 
@@ -1300,8 +1356,7 @@ def summarize_notice(notice_text: str, interests: str) -> Dict[str, str]:
 
 
 def analyze_portfolio(portfolio_text: str, job_text: str, target_role: str) -> str:
-    hits = search_whitepaper("포트폴리오 빅프로젝트 산출물 공개 제한 취업지원", k=5)
-    context = make_context(hits)
+    context = career_whitepaper_guide("포트폴리오 빅프로젝트 산출물 공개 제한 취업지원", k=5)
     if not portfolio_text.strip():
         return "포트폴리오 또는 프로젝트 정리표를 업로드해야 분석할 수 있습니다."
     system = (
@@ -1367,7 +1422,11 @@ def analyze_portfolio(portfolio_text: str, job_text: str, target_role: str) -> s
 
 
 def generate_interview_questions(portfolio_text: str, job_text: str, target_role: str) -> str:
+    guide = career_whitepaper_guide("면접 포트폴리오 프로젝트 취업지원 잡페어", k=4)
     base = f"""
+[백서 가이드 일부]
+{guide or '백서 가이드 없음'}
+
 [지원 직무]
 {target_role or '미입력'}
 
@@ -1419,10 +1478,14 @@ def generate_interview_questions(portfolio_text: str, job_text: str, target_role
 def improve_resume_text(raw_text: str, target_role: str) -> str:
     if not raw_text.strip():
         return "정리할 문장을 입력하거나 파일을 업로드해 주세요."
+    guide = career_whitepaper_guide("포트폴리오 프로젝트 산출물 공개 제한 취업지원", k=3)
     system = "자기소개서, README, 포트폴리오 문장을 직무 중심으로 다듬는 코치입니다. 과장하거나 없는 성과를 만들지 않습니다."
     user = f"""
 [지원 직무]
 {target_role or '미입력'}
+
+[백서 가이드 일부]
+{guide or '백서 가이드 없음'}
 
 [원문]
 {raw_text[:6000]}
@@ -1759,6 +1822,27 @@ def upload_signature(uploaded: Any) -> str:
     return f"{uploaded.name}:{uploaded.size}:{digest}"
 
 
+def replace_current_whitepaper(uploaded: Any) -> Tuple[Path, bytes]:
+    suffix = Path(uploaded.name).suffix.lower()
+    if suffix not in WHITEPAPER_EXTENSIONS:
+        raise ValueError("Unsupported whitepaper file type")
+    WHITEPAPER_DIR.mkdir(exist_ok=True)
+    target = WHITEPAPER_DIR / f"{CURRENT_WHITEPAPER_STEM}{suffix}"
+    for existing in WHITEPAPER_DIR.glob(f"{CURRENT_WHITEPAPER_STEM}.*"):
+        if existing != target and is_managed_whitepaper_path(existing):
+            existing.unlink()
+    payload = uploaded.getvalue()
+    target.write_bytes(payload)
+    return target, payload
+
+
+def clear_whitepaper_index_cache() -> None:
+    try:
+        build_index.clear()
+    except Exception:
+        pass
+
+
 def render_login_page() -> None:
     st.markdown("<br><br>", unsafe_allow_html=True)
     left, center, right = st.columns([1, 1.15, 1])
@@ -1844,23 +1928,24 @@ def render_sidebar() -> str:
         st.rerun()
 
     st.sidebar.markdown("<div class='side-label'>학습 자료</div>", unsafe_allow_html=True)
-    uploaded = st.sidebar.file_uploader("백서 / 커리큘럼 업로드", type=["docx", "pdf", "txt"])
+    uploaded = st.sidebar.file_uploader(
+        "백서 / 커리큘럼 업로드",
+        type=["docx", "pdf", "txt"],
+        key="whitepaper_uploader",
+    )
     st.sidebar.caption("DOCX/PDF/TXT 형식의 백서, 커리큘럼, FAQ, 수업 안내 자료를 올리면 앱의 검색 기준으로 사용됩니다.")
     if uploaded is not None:
         sig = upload_signature(uploaded)
-        if sig != st.session_state.get("last_upload_sig"):
+        if sig != st.session_state.get("last_whitepaper_upload_sig"):
             preview_text = parse_uploaded_file(uploaded, max_chars=1500)
             if not preview_text.strip():
-                st.session_state["last_upload_sig"] = sig
+                st.session_state["last_whitepaper_upload_sig"] = sig
                 st.sidebar.warning("텍스트를 추출할 수 없는 파일입니다. DOCX, 텍스트가 포함된 PDF, TXT 자료를 다시 올려 주세요.")
             else:
-                suffix = Path(uploaded.name).suffix.lower() or ".docx"
-                target = DATA_DIR / f"current_whitepaper{suffix}"
-                payload = uploaded.getvalue()
-                target.write_bytes(payload)
+                target, payload = replace_current_whitepaper(uploaded)
                 save_whitepaper_meta(uploaded.name, target, len(payload))
-                st.session_state["last_upload_sig"] = sig
-                st.cache_resource.clear()
+                st.session_state["last_whitepaper_upload_sig"] = sig
+                clear_whitepaper_index_cache()
                 st.sidebar.success("학습 자료가 반영되었습니다.")
                 st.rerun()
 
@@ -2162,14 +2247,12 @@ def page_career() -> None:
     with tabs[0]:
         section("포트폴리오 파일 분석", "백서는 가이드로만 사용하고, 실제 분석은 사용자가 업로드한 자료를 기준으로 합니다.")
         target_role = st.text_input("지원 직무", value=st.session_state.get("career_target_role", "AI 개발자 / 데이터 분석가"), key="portfolio_role")
-        portfolio_file = st.file_uploader("포트폴리오 / 프로젝트 정리표 업로드", type=["pdf", "docx", "txt", "xlsx", "csv"], key="portfolio_file")
+        portfolio_file = st.file_uploader("포트폴리오 / 프로젝트 정리표 업로드", type=["pdf", "docx", "txt", "xlsx", "csv"], key="portfolio_uploader")
         st.caption("PDF: 포트폴리오·이력서 / Excel·CSV: 프로젝트명, 기간, 역할, 사용 기술, 성과, 어려웠던 점이 들어간 정리표를 올리세요.")
         job_text_input = st.text_area("채용공고 또는 기업 정보", height=130, placeholder="지원하려는 공고 내용이 있으면 붙여넣으세요. 없으면 비워도 됩니다.", key="portfolio_job_text")
-        job_file = st.file_uploader("채용공고 파일 업로드", type=["pdf", "docx", "txt", "xlsx", "csv"], key="portfolio_job_file")
-        st.caption("채용공고 PDF/DOCX/TXT 또는 직무 요구사항을 정리한 Excel/CSV를 올리면 포트폴리오 보완 방향이 더 정확해집니다.")
+        st.caption("채용공고 PDF/DOCX/TXT 또는 직무 요구사항은 아래 채용공고 분석 탭에 올리거나 본문으로 붙여넣으면 포트폴리오 보완 방향이 더 정확해집니다.")
         portfolio_text = parse_uploaded_file(portfolio_file) if portfolio_file else ""
-        job_file_text = parse_uploaded_file(job_file) if job_file else ""
-        job_text = f"{job_text_input}\n{job_file_text}".strip()
+        job_text = job_text_input.strip()
         if portfolio_text:
             with st.expander("추출된 포트폴리오 내용 미리보기", expanded=False):
                 st.text(portfolio_text[:2500])
@@ -2202,10 +2285,15 @@ def page_career() -> None:
         section("채용공고 / 공모전 분석", "공고를 붙여넣거나 파일로 올리면 마감일, 적합도, 다음 행동을 정리합니다.")
         interests = st.text_input("관심 분야", value="AI, DX, Cloud, 데이터 분석, 서비스 기획", key="job_interest")
         notice_text = st.text_area("공고 내용", height=220, placeholder="공고명, 지원 자격, 마감일, 제출물, URL 등을 붙여넣으세요.", key="job_notice_text")
-        notice_file = st.file_uploader("공고 파일 업로드", type=["pdf", "docx", "txt", "xlsx", "csv"], key="job_notice_file")
+        col_notice, col_contest = st.columns(2)
+        with col_notice:
+            notice_file = st.file_uploader("채용공고 파일 업로드", type=["pdf", "docx", "txt", "xlsx", "csv"], key="notice_uploader")
+        with col_contest:
+            contest_file = st.file_uploader("공모전 파일 업로드", type=["pdf", "docx", "txt", "xlsx", "csv"], key="contest_uploader")
         st.caption("채용공고, 공모전 안내문, 프로젝트 모집글을 PDF/DOCX/TXT/Excel로 올리거나 본문을 붙여넣으세요.")
         notice_file_text = parse_uploaded_file(notice_file) if notice_file else ""
-        full_notice = f"{notice_text}\n{notice_file_text}".strip()
+        contest_file_text = parse_uploaded_file(contest_file) if contest_file else ""
+        full_notice = f"{notice_text}\n{notice_file_text}\n{contest_file_text}".strip()
         if st.button("공고 분석", use_container_width=True, disabled=not bool(full_notice.strip())):
             st.session_state["notice_summary"] = summarize_notice(full_notice, interests)
         summary = st.session_state.get("notice_summary")
