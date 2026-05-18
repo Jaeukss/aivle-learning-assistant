@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import json
 import os
 import re
+import textwrap
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -15,6 +17,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
+
+try:
+    import altair as alt
+except Exception:
+    alt = None
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -130,7 +137,7 @@ st.set_page_config(page_title=APP_TITLE, page_icon="📘", layout="wide", initia
 # 디자인: 밝은 학습 플랫폼 UI + Pretendard
 # ============================================================
 
-st.markdown(
+st.markdown(textwrap.dedent(
     """
     <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css');
@@ -467,12 +474,37 @@ st.markdown(
     [data-testid="stDataFrame"] { border-radius: 18px; overflow: hidden; }
     .danger-zone { border-left: 5px solid var(--error); background: #FFF7F6; }
 
+
+    .chat-shell {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: var(--shadow-soft);
+        padding: 14px 16px;
+        margin: 10px 0 14px 0;
+    }
+    .chat-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 12px;
+    }
+    .chat-title { font-weight: 900; color: #111827; }
+    .chat-hint { color: var(--muted); font-size: .84rem; }
+    .chat-window-note {
+        color: var(--muted);
+        font-size: .84rem;
+        margin: -2px 0 8px 0;
+    }
+
     @media (max-width: 1199px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .routine-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 767px) { .summary-grid, .routine-strip { grid-template-columns: 1fr; } .learning-hero { padding: 22px 18px; } .main .block-container { padding-left: .9rem; padding-right: .9rem; } }
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+    """
+).strip(), unsafe_allow_html=True)
 
 # ============================================================
 # 저장소 / 상태
@@ -484,6 +516,16 @@ class SearchHit:
     score: float
     title: str
     text: str
+
+
+def safe_text(value: Any) -> str:
+    """사용자 입력값이나 파일명 등이 HTML로 노출되지 않도록 이스케이프합니다."""
+    return html.escape(str(value or ""), quote=True)
+
+
+def html_block(markup: str) -> None:
+    """들여쓰기 때문에 HTML이 코드블록으로 보이는 문제를 방지합니다."""
+    st.markdown(textwrap.dedent(markup).strip(), unsafe_allow_html=True)
 
 
 def read_json(path: Path, default: Any) -> Any:
@@ -776,6 +818,216 @@ def ask_llm(system_prompt: str, user_prompt: str, temperature: float = 0.15) -> 
         return None
 
 
+
+# ============================================================
+# RAG 검색 고도화: Query Rewriting + Multi Query + Sub Query
+# - HyDE는 의도적으로 제외합니다.
+# - API 키가 없어도 fallback 쿼리 확장으로 앱이 중단되지 않습니다.
+# ============================================================
+
+def extract_json_object(text: str) -> Optional[Dict[str, Any]]:
+    """LLM 응답에서 JSON 객체만 안전하게 추출합니다."""
+    if not text:
+        return None
+    candidates = re.findall(r"```json\s*(.*?)\s*```", text, flags=re.S)
+    candidates.append(text)
+    for candidate in candidates:
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start == -1 or end == -1 or start >= end:
+            continue
+        try:
+            parsed = json.loads(candidate[start : end + 1])
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def unique_keep_order(items: List[str], limit: Optional[int] = None) -> List[str]:
+    seen = set()
+    result: List[str] = []
+    for item in items:
+        clean = normalize_text(str(item or ""))
+        if not clean:
+            continue
+        key = clean.lower().replace(" ", "")
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(clean)
+        if limit is not None and len(result) >= limit:
+            break
+    return result
+
+
+def likely_complex_question(question: str) -> bool:
+    q = str(question or "")
+    markers = ["그리고", "또", "또는", "및", "까지", "각각", "차이", "비교", ",", "/", " vs ", "VS"]
+    return any(marker in q for marker in markers)
+
+
+def fallback_query_rewrite(question: str) -> str:
+    """LLM을 사용할 수 없을 때 적용하는 안전한 재작성 쿼리입니다."""
+    q = normalize_text(question)
+    alias_terms: List[str] = []
+    lowered = q.lower()
+    for topic, aliases in TOPIC_ALIASES.items():
+        topic_blob = " ".join([topic] + aliases).lower()
+        if any(term.lower() in lowered for term in [topic] + aliases) or any(tok in topic_blob for tok in lowered.split()):
+            alias_terms.extend([topic] + aliases[:5])
+    if official_notice_needed(q):
+        alias_terms.extend(["공식 기준", "최신 공지", "운영자 확인", "기수별 변동 가능"])
+    if any(word in q for word in ["수료", "출석", "출결", "결석", "지각", "조퇴", "공가"]):
+        alias_terms.extend(["출결", "지각", "조퇴", "외출", "공가", "결석", "수료", "소정훈련일수"])
+    if any(word in q for word in ["포트폴리오", "프로젝트", "빅프로젝트", "미니프로젝트"]):
+        alias_terms.extend(["프로젝트", "빅프로젝트", "산출물", "공개 제한", "GitHub", "저작권", "취업"])
+    suffix = " ".join(unique_keep_order(alias_terms, limit=10))
+    return normalize_text(f"{q} {suffix} 백서 기준 공식 안내")
+
+
+def fallback_multi_queries(question: str, rewritten_query: str) -> List[str]:
+    q = normalize_text(question)
+    if any(word in q for word in ["수료", "출석", "출결", "결석", "지각", "조퇴", "공가"]):
+        candidates = [
+            "출결 기준 지각 조퇴 외출 결석 공가 수료 소정훈련일수",
+            "정상 수료 전체 소정훈련일수 80% 이상 출석 결석일수 제적 기준",
+            "에이블스쿨 출석인정 공가 증빙서류 지각 조퇴 외출 처리",
+        ]
+    elif any(word in q for word in ["트랙", "AI 개발자", "DX", "컨설턴트"]):
+        candidates = [
+            "AI 개발자 트랙 DX 컨설턴트 트랙 차이 인재상 산출물",
+            "트랙별 커리큘럼 AI Cloud 서비스 개발 서비스 제안",
+            "AI DX 공통 역량 데이터 AI Cloud 협업 발표 문서화",
+        ]
+    elif any(word in q for word in ["포트폴리오", "면접", "취업", "공고", "기업"]):
+        candidates = [
+            "포트폴리오 빅프로젝트 산출물 공개 제한 저작권 GitHub 블로그",
+            "취업지원 잡페어 포트폴리오 면접 자기소개서 프로젝트 경험",
+            "프로젝트 역할 기술 성과 문제정의 면접 질문 준비",
+        ]
+    else:
+        candidates = [
+            rewritten_query,
+            f"{q} 핵심 개념 학습 목표 커리큘럼",
+            f"{q} 예습 복습 프로젝트 적용 백서 근거",
+        ]
+    return unique_keep_order(candidates, limit=3)
+
+
+def fallback_sub_queries(question: str) -> List[str]:
+    q = normalize_text(question)
+    if not likely_complex_question(q):
+        return []
+    protected = q.replace("AI 개발자 트랙과 DX 컨설턴트 트랙", "AI 개발자 트랙 / DX 컨설턴트 트랙")
+    parts = re.split(r"\s*(?:그리고|또는|또|및|까지|,|/| vs | VS )\s*", protected)
+    cleaned = []
+    for part in parts:
+        part = normalize_text(part)
+        if len(part) >= 4:
+            cleaned.append(part)
+    if len(cleaned) >= 2:
+        return unique_keep_order(cleaned, limit=4)
+    if any(word in q for word in ["차이", "비교", "각각"]):
+        return unique_keep_order([f"{q}의 첫 번째 항목", f"{q}의 두 번째 항목", f"{q}의 비교 기준"], limit=3)
+    return []
+
+
+def build_rag_query_plan(question: str) -> Dict[str, Any]:
+    """
+    백서 검색용 쿼리 계획을 생성합니다.
+    포함: Query Rewriting, Multi Query, 조건부 Sub Query
+    제외: HyDE 가상답변 생성
+    """
+    q = normalize_text(question)
+    fallback_rewritten = fallback_query_rewrite(q)
+    fallback_plan = {
+        "rewritten_query": fallback_rewritten,
+        "multi_queries": fallback_multi_queries(q, fallback_rewritten),
+        "sub_queries": fallback_sub_queries(q),
+    }
+
+    system = (
+        "너는 RAG 검색 쿼리 설계자입니다. 사용자의 질문을 백서 검색에 적합하게 정리합니다. "
+        "가상 답변을 만들지 마세요. HyDE 방식은 사용하지 마세요. "
+        "반드시 JSON 객체만 반환하세요."
+    )
+    user = f"""
+[사용자 질문]
+{q}
+
+[작업]
+1. rewritten_query: 백서 검색에 적합한 한 문장으로 재작성
+2. multi_queries: 같은 의미를 다른 표현으로 찾기 위한 검색 쿼리 3개 이하
+3. sub_queries: 질문이 복합 질문일 때만 하위 질문 4개 이하, 단순 질문이면 빈 배열
+
+[JSON 형식]
+{{
+  "rewritten_query": "재작성 검색문",
+  "multi_queries": ["검색문1", "검색문2", "검색문3"],
+  "sub_queries": ["하위질문1", "하위질문2"]
+}}
+"""
+    response = ask_llm(system, user, temperature=0.0)
+    parsed = extract_json_object(response or "")
+    if not isinstance(parsed, dict):
+        return fallback_plan
+
+    rewritten = normalize_text(str(parsed.get("rewritten_query", ""))) or fallback_rewritten
+    multi_raw = parsed.get("multi_queries", [])
+    sub_raw = parsed.get("sub_queries", [])
+    multi = unique_keep_order([str(x) for x in multi_raw if isinstance(x, (str, int, float))], limit=3)
+    sub = unique_keep_order([str(x) for x in sub_raw if isinstance(x, (str, int, float))], limit=4)
+    if not multi:
+        multi = fallback_plan["multi_queries"]
+    if not likely_complex_question(q):
+        sub = []
+    elif not sub:
+        sub = fallback_plan["sub_queries"]
+    return {
+        "rewritten_query": rewritten[:300],
+        "multi_queries": multi,
+        "sub_queries": sub,
+    }
+
+
+def advanced_search_whitepaper(question: str, k: int = 8) -> List[SearchHit]:
+    """Query Rewriting + Multi Query + Sub Query를 적용한 통합 백서 검색입니다."""
+    plan = build_rag_query_plan(question)
+    weighted_queries: List[Tuple[str, float]] = [(question, 1.00)]
+    if plan.get("rewritten_query"):
+        weighted_queries.append((str(plan["rewritten_query"]), 0.98))
+    weighted_queries.extend((q, 0.92) for q in plan.get("multi_queries", []))
+    weighted_queries.extend((q, 0.88) for q in plan.get("sub_queries", []))
+
+    deduped_queries: List[Tuple[str, float]] = []
+    seen_queries = set()
+    for query_text, weight in weighted_queries:
+        clean_query = normalize_text(str(query_text))
+        key = clean_query.lower().replace(" ", "")
+        if not clean_query or key in seen_queries:
+            continue
+        seen_queries.add(key)
+        deduped_queries.append((clean_query, weight))
+        if len(deduped_queries) >= 10:
+            break
+    weighted_queries = deduped_queries
+
+    aggregated: Dict[int, SearchHit] = {}
+    for q_idx, (query_text, weight) in enumerate(weighted_queries):
+        for hit in search_whitepaper(query_text, k=4):
+            score = float(hit.score) * weight + max(0.0, 0.04 - q_idx * 0.004)
+            existing = aggregated.get(hit.index)
+            if existing is None or score > existing.score:
+                aggregated[hit.index] = SearchHit(index=hit.index, score=score, title=hit.title, text=hit.text)
+
+    hits = sorted(aggregated.values(), key=lambda item: item.score, reverse=True)[:k]
+    if hits:
+        return hits
+    return search_whitepaper(question, k=k)
+
+
 def make_context(hits: List[SearchHit]) -> str:
     return "\n\n---\n\n".join([f"[근거 {i}] 제목: {hit.title}\n내용:\n{hit.text}" for i, hit in enumerate(hits, start=1)])
 
@@ -801,11 +1053,12 @@ def fallback_answer(question: str, hits: List[SearchHit]) -> str:
 
 
 def answer_from_whitepaper(question: str) -> Tuple[str, List[SearchHit], List[Dict[str, str]]]:
-    hits = search_whitepaper(question, k=6)
+    hits = advanced_search_whitepaper(question, k=8)
     context = make_context(hits)
     system = (
         "당신은 KT AIVLE School 학습자를 돕는 백서 기반 학습 도우미입니다. "
         "반드시 제공된 백서 근거 안에서만 답변하고, 근거가 부족하면 부족하다고 말합니다. "
+        "내부 검색에는 Query Rewriting, Multi Query, Sub Query가 적용되지만 최종 답변은 실제 백서 근거만 사용합니다. "
         "일정, 출결, 수료, 지원 자격, 평가처럼 변동 가능한 내용은 최신 공식 공지 확인이 필요하다고 안내합니다. "
         "답변은 한국어 마크다운으로 작성합니다."
     )
@@ -858,7 +1111,7 @@ def link_recommendations(question: str) -> List[Dict[str, str]]:
 
 def generate_prep_material(week: str, topic: str, minutes: int) -> Tuple[str, List[SearchHit]]:
     query = f"{week} {topic} {' '.join(TOPIC_ALIASES.get(topic, []))}"
-    hits = search_whitepaper(query, k=6)
+    hits = advanced_search_whitepaper(query, k=6)
     context = make_context(hits)
     system = "백서 근거로 수업 전 예습 자료를 만드는 학습 코치입니다. 근거 밖 추측은 하지 않습니다."
     user = f"""
@@ -1346,73 +1599,109 @@ def save_career_report(title: str, report: str, report_type: str) -> None:
 # ============================================================
 
 
-def hero(title: str, body: str, kicker: str = "AIVLE 학습도우미") -> None:
-    st.markdown(
-        f"""
-        <div class='learning-hero'>
-            <div class='hero-kicker'>{kicker}</div>
-            <h1>{title}</h1>
-            <p>{body}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def hero(title: str, subtitle: str) -> None:
+    html_block(f"""
+    <div class='learning-hero'>
+        <div class='hero-kicker'>학습 플랫폼</div>
+        <h1>{safe_text(title)}</h1>
+        <p>{safe_text(subtitle)}</p>
+    </div>
+    """)
 
 
 def section(title: str, subtitle: str = "") -> None:
-    st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-title'>{safe_text(title)}</div>", unsafe_allow_html=True)
     if subtitle:
-        st.markdown(f"<div class='section-sub'>{subtitle}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-sub'>{safe_text(subtitle)}</div>", unsafe_allow_html=True)
 
 
 def small_help(text: str) -> None:
-    st.markdown(f"<div class='small-help'>{text}</div>", unsafe_allow_html=True)
+    st.caption(str(text))
 
 
 def status_badge(text: str, kind: str = "info") -> None:
     class_name = {"success": "badge-success", "warning": "badge-warning", "muted": "badge-muted"}.get(kind, "badge-info")
-    st.markdown(f"<span class='status-badge {class_name}'>{text}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='status-badge {class_name}'>{safe_text(text)}</span>", unsafe_allow_html=True)
 
 
 def notice_card(title: str, body: str, badge: str = "안내", kind: str = "info") -> None:
-    class_name = "danger-zone" if kind == "danger" else ""
-    st.markdown(
-        f"""
-        <div class='notice-card {class_name}'>
-            <span class='status-badge badge-info'>{badge}</span><br>
-            <b>{title}</b>
-            <p style='margin:.45rem 0 0;color:var(--muted);line-height:1.55;'>{body}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    border_kind = "danger-zone" if kind == "danger" else "notice-card"
+    html_block(f"""
+    <div class='{border_kind} notice-card'>
+        <span class='status-badge badge-info'>{safe_text(badge)}</span><br>
+        <b>{safe_text(title)}</b>
+        <p style='margin:.45rem 0 0;color:var(--muted);line-height:1.55;'>{safe_text(body)}</p>
+    </div>
+    """)
 
 
 def empty_state(title: str, body: str) -> None:
-    st.markdown(
-        f"""
-        <div class='empty-state'>
-            <b>{title}</b>
-            <p>{body}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    with st.container(border=True):
+        st.markdown(f"**{title}**")
+        st.caption(str(body))
 
 
 def summary_cards(items: List[Tuple[str, str, str]]) -> None:
-    cards = []
-    for label, value, hint in items:
-        cards.append(
-            f"""
-            <div class='summary-card'>
-                <div class='label'>{label}</div>
-                <div class='value'>{value}</div>
-                <div class='hint'>{hint}</div>
-            </div>
-            """
+    """요약 카드를 Streamlit 네이티브 컨테이너로 표시합니다.
+    HTML 렌더링 실패 시 코드가 그대로 보이는 문제를 방지합니다.
+    """
+    if not items:
+        return
+    cols = st.columns(min(len(items), 4))
+    for idx, (label, value, hint) in enumerate(items):
+        with cols[idx % len(cols)]:
+            with st.container(border=True):
+                st.caption(str(label))
+                st.markdown(f"### {safe_text(value)}")
+                st.caption(str(hint))
+
+
+def get_record_counts() -> Dict[str, int]:
+    """대시보드와 학습 현황에서 즉시 재사용할 누적 기록 수를 반환합니다."""
+    conversations = load_conversations()
+    results = read_json(RESULT_PATH, [])
+    wrong_notes = read_json(WRONG_NOTE_PATH, [])
+    events = read_json(CALENDAR_PATH, [])
+    return {
+        "conversations": len(conversations) if isinstance(conversations, dict) else 0,
+        "results": len(results) if isinstance(results, list) else 0,
+        "wrong_notes": len(wrong_notes) if isinstance(wrong_notes, list) else 0,
+        "events": len(events) if isinstance(events, list) else 0,
+    }
+
+
+def mark_records_updated() -> None:
+    """진단·오답 저장 직후 현재 실행 상태에서도 최신 기록임을 표시합니다."""
+    st.session_state["records_updated_at"] = datetime.now().isoformat(timespec="seconds")
+    st.session_state["record_counts"] = get_record_counts()
+
+
+def horizontal_rate_chart(df: pd.DataFrame, label_col: str = "주제", value_col: str = "정답률") -> None:
+    """긴 한국어 주제명이 세로로 깨지지 않도록 가로 막대 차트로 표시합니다."""
+    if df is None or df.empty or label_col not in df.columns or value_col not in df.columns:
+        empty_state("표시할 시각화 데이터가 없습니다", "쪽지시험을 채점하면 취약 주제 그래프가 표시됩니다.")
+        return
+
+    chart_df = df[[label_col, value_col]].copy()
+    chart_df[label_col] = chart_df[label_col].astype(str).str.replace("\n", " ", regex=False)
+    chart_df[value_col] = pd.to_numeric(chart_df[value_col], errors="coerce").fillna(0).clip(lower=0, upper=100)
+    chart_df = chart_df.sort_values(value_col, ascending=True)
+
+    if alt is None:
+        st.dataframe(chart_df, hide_index=True, use_container_width=True)
+        return
+
+    chart = (
+        alt.Chart(chart_df)
+        .mark_bar(cornerRadiusEnd=6, height=18)
+        .encode(
+            x=alt.X(f"{value_col}:Q", scale=alt.Scale(domain=[0, 100]), title="정답률(%)"),
+            y=alt.Y(f"{label_col}:N", sort=None, title=None, axis=alt.Axis(labelAngle=0, labelLimit=260)),
+            tooltip=[alt.Tooltip(f"{label_col}:N", title="주제"), alt.Tooltip(f"{value_col}:Q", title="정답률", format=".1f")],
         )
-    st.markdown("<div class='summary-grid'>" + "".join(cards) + "</div>", unsafe_allow_html=True)
+        .properties(height=max(160, 42 * len(chart_df)))
+    )
+    st.altair_chart(chart, use_container_width=True)
 
 
 def ensure_whitepaper_ready() -> bool:
@@ -1429,17 +1718,16 @@ def render_sources(hits: List[SearchHit]) -> None:
         return
     with st.expander("백서 근거 보기", expanded=False):
         for idx, hit in enumerate(hits, start=1):
-            preview = hit.text.replace("\n", " ")[:520]
-            st.markdown(
-                f"""
-                <div class='source-box'>
-                    <b>근거 {idx} · {hit.title}</b><br>
-                    <span style='color:#64748b;font-size:.86rem;'>유사도 {hit.score:.3f} · 청크 {hit.index}</span>
-                    <p>{preview}{'...' if len(hit.text) > 520 else ''}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            preview = safe_text(hit.text.replace("\n", " ")[:520])
+            title = safe_text(hit.title)
+            ellipsis = "..." if len(hit.text) > 520 else ""
+            html_block(f"""
+            <div class='source-box'>
+                <b>근거 {idx} · {title}</b><br>
+                <span style='color:#64748b;font-size:.86rem;'>유사도 {hit.score:.3f} · 청크 {hit.index}</span>
+                <p>{preview}{ellipsis}</p>
+            </div>
+            """)
 
 
 def render_link_table(links: List[Dict[str, str]]) -> None:
@@ -1452,16 +1740,16 @@ def render_link_table(links: List[Dict[str, str]]) -> None:
 def render_header_metrics() -> None:
     index = load_index()
     chunk_count = len(index.get("chunks", [])) if index else 0
-    conv_count = len(load_conversations())
-    result_count = len(read_json(RESULT_PATH, []))
-    wrong_count = len(read_json(WRONG_NOTE_PATH, []))
+    counts = get_record_counts()
     meta = get_whitepaper_meta()
     display_name = meta.get("display_name") or get_whitepaper_path().name
+    material_status = "반영 완료" if chunk_count > 0 else "자료 필요"
+    status_hint = "백서 기반 답변 사용 가능" if chunk_count > 0 else "학습 자료를 업로드해 주세요"
     summary_cards([
         ("현재 학습 자료", display_name, "업로드한 백서·커리큘럼 기준"),
-        ("검색 청크", f"{chunk_count:,}", "백서 기반 검색 단위"),
-        ("저장 대화", f"{conv_count:,}", "이어볼 수 있는 학습 대화"),
-        ("진단 / 오답", f"{result_count:,} / {wrong_count:,}", "누적 학습 점검 기록"),
+        ("학습 자료 상태", material_status, status_hint),
+        ("저장 대화", f"{counts['conversations']:,}", "이어볼 수 있는 학습 대화"),
+        ("진단 / 오답", f"{counts['results']:,} / {counts['wrong_notes']:,}", "누적 학습 점검 기록"),
     ])
 
 
@@ -1475,16 +1763,13 @@ def render_login_page() -> None:
     st.markdown("<br><br>", unsafe_allow_html=True)
     left, center, right = st.columns([1, 1.15, 1])
     with center:
-        st.markdown(
-            """
-            <div class='info-panel' style='padding:28px;'>
-                <div class='hero-kicker'>학습자 로그인</div>
-                <h2 style='margin:4px 0 8px 0;color:#111827;'>AIVLE 학습도우미</h2>
-                <p style='color:#64748b;'>제공받은 계정으로 로그인해 학습 질의, 예습, 진단, 복습, 취업 준비를 이용하세요.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        html_block("""
+        <div class='info-panel' style='padding:28px;'>
+            <div class='hero-kicker'>학습자 로그인</div>
+            <h2 style='margin:4px 0 8px 0;color:#111827;'>AIVLE 학습도우미</h2>
+            <p style='color:#64748b;'>제공받은 계정으로 로그인해 학습 질의, 예습, 진단, 복습, 취업 준비를 이용하세요.</p>
+        </div>
+        """)
         with st.form("login_form"):
             login_id = st.text_input("아이디")
             login_pw = st.text_input("비밀번호", type="password")
@@ -1505,18 +1790,15 @@ def render_sidebar() -> str:
         st.session_state["active_page"] = nav_target
     st.session_state["nav_target"] = None
 
-    st.sidebar.markdown(
-        """
-        <div class='sidebar-brand'>
-            <div class='brand-mark'>A</div>
-            <div>
-                <div class='brand-title'>AIVLE 학습도우미</div>
-                <div class='brand-sub'>학습자 모드</div>
-            </div>
+    st.sidebar.markdown(textwrap.dedent("""
+    <div class='sidebar-brand'>
+        <div class='brand-mark'>A</div>
+        <div>
+            <div class='brand-title'>AIVLE 학습도우미</div>
+            <div class='brand-sub'>학습자 모드</div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    </div>
+    """).strip(), unsafe_allow_html=True)
 
     meta = get_whitepaper_meta()
     path = get_whitepaper_path()
@@ -1624,17 +1906,14 @@ def page_dashboard() -> None:
         st.success("오늘의 체크리스트가 저장되었습니다.")
 
     section("학습 루틴", "처음 사용하는 경우 아래 순서대로 진행하면 됩니다.")
-    st.markdown(
-        """
-        <div class='routine-strip'>
-            <div class='routine-item'><span>STEP 01</span><b>질문하기</b><p>추천 질문으로 막힌 개념을 빠르게 확인합니다.</p></div>
-            <div class='routine-item'><span>STEP 02</span><b>예습하기</b><p>주차와 주제를 선택해 수업 전 핵심 내용을 정리합니다.</p></div>
-            <div class='routine-item'><span>STEP 03</span><b>진단하기</b><p>쪽지시험으로 현재 이해도를 점수와 등급으로 확인합니다.</p></div>
-            <div class='routine-item'><span>STEP 04</span><b>취업 연결</b><p>포트폴리오와 면접 질문으로 학습 경험을 정리합니다.</p></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    html_block("""
+    <div class='routine-strip'>
+        <div class='routine-item'><span>STEP 01</span><b>질문하기</b><p>추천 질문으로 막힌 개념을 빠르게 확인합니다.</p></div>
+        <div class='routine-item'><span>STEP 02</span><b>예습하기</b><p>주차와 주제를 선택해 수업 전 핵심 내용을 정리합니다.</p></div>
+        <div class='routine-item'><span>STEP 03</span><b>진단하기</b><p>쪽지시험으로 현재 이해도를 점수와 등급으로 확인합니다.</p></div>
+        <div class='routine-item'><span>STEP 04</span><b>취업 연결</b><p>포트폴리오와 면접 질문으로 학습 경험을 정리합니다.</p></div>
+    </div>
+    """)
 
     section("바로 시작")
     c1, c2, c3 = st.columns(3)
@@ -1685,31 +1964,46 @@ def page_chat() -> None:
 
     conv_id = current_conversation_id()
     conversations = load_conversations()
-    messages = conversations[conv_id].get("messages", [])
+    messages = conversations.get(conv_id, {}).get("messages", [])
     st.divider()
+
+    toolbar_left, toolbar_right = st.columns([3, 1])
+    with toolbar_left:
+        section("대화창", "대화는 고정된 박스 안에서만 쌓입니다. 페이지 전체가 길어지지 않도록 최근 대화부터 확인할 수 있습니다.")
+    with toolbar_right:
+        if st.button("대화 초기화", use_container_width=True, type="secondary"):
+            conversations = load_conversations()
+            conversations.setdefault(conv_id, {"title": "새 학습 대화", "messages": [], "created_at": datetime.now().isoformat(timespec="seconds")})
+            conversations[conv_id]["messages"] = []
+            conversations[conv_id]["title"] = "새 학습 대화"
+            conversations[conv_id]["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            save_conversations(conversations)
+            st.session_state.pop("pending_chat", None)
+            st.rerun()
 
     if not messages:
         empty_state("아직 대화가 없습니다", "추천 질문을 누르거나 아래 입력창에 질문을 입력하면 백서 근거를 찾아 답변합니다.")
 
-    for msg in messages:
-        with st.chat_message(msg.get("role", "assistant")):
-            st.markdown(msg.get("content", ""))
-            sources = msg.get("sources") or []
-            if sources:
-                render_sources([SearchHit(**src) for src in sources])
+    st.caption("최근 30개 메시지만 대화창에 표시됩니다. 이전 내용은 대화 목록에 저장됩니다.")
+    chat_box = st.container(height=520, border=True)
+    with chat_box:
+        for msg in messages[-30:]:
+            role = msg.get("role", "assistant")
+            with st.chat_message(role):
+                st.markdown(msg.get("content", ""))
+                sources = msg.get("sources") or []
+                if sources:
+                    try:
+                        render_sources([SearchHit(**src) for src in sources])
+                    except Exception:
+                        notice_card("근거 표시 생략", "저장된 근거 형식이 맞지 않아 답변 본문만 표시합니다.", badge="근거")
 
     pending = st.session_state.pop("pending_chat", None)
     question = pending or st.chat_input("백서 기준으로 질문을 입력하세요")
     if question:
         append_message(conv_id, "user", question)
-        with st.chat_message("user"):
-            st.markdown(question)
-        with st.chat_message("assistant"):
-            with st.spinner("백서에서 근거를 찾고 답변을 생성하는 중입니다."):
-                answer, hits, links = answer_from_whitepaper(question)
-            st.markdown(answer)
-            render_sources(hits)
-            render_link_table(links)
+        with st.spinner("백서에서 근거를 찾고 답변을 생성하는 중입니다."):
+            answer, hits, links = answer_from_whitepaper(question)
         append_message(conv_id, "assistant", answer, sources=[hit.__dict__ for hit in hits])
         st.rerun()
 
@@ -1790,15 +2084,18 @@ def page_prep_diagnosis() -> None:
         result = {"time": datetime.now().isoformat(timespec="seconds"), "topic": st.session_state.get("prep_topic", "기타"), "score": score, "level": level, "stats": stats.to_dict(orient="records")}
         save_result(result)
         save_wrong_notes(wrong_items)
+        mark_records_updated()
         st.session_state["last_quiz_result"] = {**result, "weak_topics": weak_topics, "wrong_items": wrong_items}
         st.rerun()
 
     result = st.session_state.get("last_quiz_result")
     if result:
         st.success(f"점수: {result['score']}점 / 학습 등급: {result['level']}")
+        live_counts = get_record_counts()
+        status_badge(f"진단 {live_counts['results']}건 · 오답 {live_counts['wrong_notes']}건 반영", "success")
         stats_df = pd.DataFrame(result.get("stats", []))
         if not stats_df.empty:
-            st.bar_chart(stats_df.set_index("주제")["정답률"])
+            horizontal_rate_chart(stats_df, "주제", "정답률")
         st.markdown(study_recommendation(result["level"], result.get("weak_topics", [])))
         if result.get("wrong_items"):
             section("방금 생성된 오답노트")
@@ -1834,7 +2131,7 @@ def page_review_analysis() -> None:
             summary = topic_df.groupby("주제", as_index=False).agg({"정답률": "mean", "문항수": "sum"})
             summary["정답률"] = summary["정답률"].round(1)
             section("부족한 주제 시각화")
-            st.bar_chart(summary.set_index("주제")["정답률"])
+            horizontal_rate_chart(summary, "주제", "정답률")
             st.dataframe(summary, hide_index=True, use_container_width=True)
 
     st.divider()
