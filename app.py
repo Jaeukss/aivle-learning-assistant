@@ -1,8 +1,6 @@
 
 from __future__ import annotations
 
-import base64
-import calendar as py_calendar
 import hashlib
 import hmac
 import html
@@ -10,7 +8,6 @@ import json
 import os
 import re
 import textwrap
-import time
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -25,12 +22,6 @@ try:
     import altair as alt
 except Exception:
     alt = None
-
-try:
-    from streamlit_calendar import calendar as streamlit_calendar
-except Exception:
-    streamlit_calendar = None
-
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -77,8 +68,6 @@ WRONG_NOTE_PATH = STORE_DIR / "wrong_notes.json"
 CALENDAR_PATH = STORE_DIR / "calendar_events.json"
 CHECKLIST_PATH = STORE_DIR / "daily_checklist.json"
 CAREER_REPORT_PATH = STORE_DIR / "career_reports.json"
-LOGIN_TOKEN_PARAM = "aivle_auth"
-LOGIN_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7
 
 try:
     if not any(WHITEPAPER_DIR.glob(f"{CURRENT_WHITEPAPER_STEM}.*")) and BUNDLED_WHITEPAPER_PATH.exists():
@@ -524,50 +513,6 @@ st.markdown(textwrap.dedent(
         margin: -2px 0 8px 0;
     }
 
-    .top-nav-shell {
-        background: rgba(255,255,255,.82);
-        border: 1px solid var(--border);
-        border-radius: 22px;
-        box-shadow: var(--shadow-soft);
-        padding: 14px 16px;
-        margin: 0 0 16px 0;
-    }
-    .top-nav-title {
-        color: #111827;
-        font-weight: 920;
-        letter-spacing: -0.03em;
-        margin-bottom: 2px;
-    }
-    .top-nav-help {
-        color: var(--muted);
-        font-size: .86rem;
-        line-height: 1.45;
-        margin-bottom: 8px;
-    }
-    .calendar-legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 6px 0 14px 0;
-    }
-    .calendar-legend span {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 10px;
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        background: var(--surface);
-        color: var(--muted);
-        font-size: .82rem;
-        font-weight: 800;
-    }
-    .calendar-fallback td, .calendar-fallback th {
-        white-space: pre-wrap !important;
-        vertical-align: top !important;
-        min-width: 110px !important;
-    }
-
     @media (max-width: 1199px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .routine-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 767px) { .summary-grid, .routine-strip { grid-template-columns: 1fr; } .learning-hero { padding: 22px 18px; } .main .block-container { padding-left: .9rem; padding-right: .9rem; } }
     </style>
@@ -706,10 +651,8 @@ def init_state() -> None:
     st.session_state.setdefault("active_page", "대시보드")
     st.session_state.setdefault("nav_target", None)
     st.session_state.setdefault("last_whitepaper_upload_sig", "")
-    st.session_state.setdefault("login_restored", False)
     if st.session_state["active_page"] not in MENU_OPTIONS:
         st.session_state["active_page"] = "대시보드"
-    restore_login_from_token()
 
 
 def request_nav(page: str) -> None:
@@ -720,70 +663,6 @@ def request_nav(page: str) -> None:
 def authenticate(login_id: str, login_password: str) -> bool:
     expected_id, expected_pw = get_login_credentials()
     return hmac.compare_digest(login_id, expected_id) and hmac.compare_digest(login_password, expected_pw)
-
-
-def _b64_encode(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
-
-
-def _b64_decode(value: str) -> bytes:
-    padded = value + "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(padded.encode("utf-8"))
-
-
-def login_token_secret() -> bytes:
-    seed = get_config_value("APP_LOGIN_SECRET") or get_config_value("APP_LOGIN_PASSWORD", "aivle2026") or "aivle2026"
-    return hashlib.sha256(str(seed).encode("utf-8")).digest()
-
-
-def make_login_token(login_id: str) -> str:
-    now = int(time.time())
-    payload = {"uid": login_id, "iat": now, "exp": now + LOGIN_TOKEN_TTL_SECONDS, "v": 1}
-    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    sig = hmac.new(login_token_secret(), raw, hashlib.sha256).digest()
-    return f"{_b64_encode(raw)}.{_b64_encode(sig)}"
-
-
-def verify_login_token(token: str) -> bool:
-    try:
-        raw_b64, sig_b64 = str(token).split(".", 1)
-        raw = _b64_decode(raw_b64)
-        expected_sig = hmac.new(login_token_secret(), raw, hashlib.sha256).digest()
-        if not hmac.compare_digest(_b64_decode(sig_b64), expected_sig):
-            return False
-        payload = json.loads(raw.decode("utf-8"))
-        expected_id, _ = get_login_credentials()
-        return payload.get("uid") == expected_id and int(payload.get("exp", 0)) > int(time.time())
-    except Exception:
-        return False
-
-
-def set_login_token(login_id: str) -> None:
-    try:
-        st.query_params[LOGIN_TOKEN_PARAM] = make_login_token(login_id)
-    except Exception:
-        pass
-
-
-def clear_login_token() -> None:
-    try:
-        if LOGIN_TOKEN_PARAM in st.query_params:
-            del st.query_params[LOGIN_TOKEN_PARAM]
-    except Exception:
-        pass
-
-
-def restore_login_from_token() -> None:
-    if st.session_state.get("authenticated"):
-        return
-    try:
-        token = st.query_params.get(LOGIN_TOKEN_PARAM, "")
-    except Exception:
-        token = ""
-    if token and verify_login_token(str(token)):
-        st.session_state["authenticated"] = True
-        st.session_state["login_error"] = ""
-        st.session_state["login_restored"] = True
 
 
 # ============================================================
@@ -1978,69 +1857,15 @@ def render_login_page() -> None:
         with st.form("login_form"):
             login_id = st.text_input("아이디")
             login_pw = st.text_input("비밀번호", type="password")
-            remember_login = st.checkbox("이 브라우저에서 로그인 유지", value=True)
             submitted = st.form_submit_button("로그인", use_container_width=True)
         if submitted:
             if authenticate(login_id, login_pw):
                 st.session_state["authenticated"] = True
                 st.session_state["login_error"] = ""
-                st.session_state["login_restored"] = False
-                if remember_login:
-                    set_login_token(login_id)
-                else:
-                    clear_login_token()
                 st.rerun()
             st.session_state["login_error"] = "아이디 또는 비밀번호가 올바르지 않습니다."
         if st.session_state.get("login_error"):
             notice_card("로그인 정보 확인", st.session_state["login_error"], badge="로그인 실패", kind="danger")
-
-
-def render_whitepaper_upload_widget(container: Any = st) -> None:
-    meta = get_whitepaper_meta()
-    path = get_whitepaper_path()
-    material_status = "적용됨" if path.exists() else "없음"
-    help_text = "DOCX/PDF/TXT 형식의 백서, 커리큘럼, FAQ, 수업 안내 자료를 올리면 학습 질의·예습·진단의 기준 자료로 사용됩니다."
-    container.caption(f"현재 자료: {meta.get('display_name', path.name)} · 상태: {material_status}")
-    uploaded = container.file_uploader(
-        "백서 / 커리큘럼 업로드",
-        type=["docx", "pdf", "txt"],
-        key="whitepaper_uploader",
-        help=help_text,
-    )
-    container.caption(help_text)
-    if uploaded is not None:
-        sig = upload_signature(uploaded)
-        if sig != st.session_state.get("last_whitepaper_upload_sig"):
-            preview_text = parse_uploaded_file(uploaded, max_chars=1500)
-            if not preview_text.strip():
-                st.session_state["last_whitepaper_upload_sig"] = sig
-                container.warning("텍스트를 추출할 수 없는 파일입니다. DOCX, 텍스트가 포함된 PDF, TXT 자료를 다시 올려 주세요.")
-            else:
-                target, payload = replace_current_whitepaper(uploaded)
-                save_whitepaper_meta(uploaded.name, target, len(payload))
-                st.session_state["last_whitepaper_upload_sig"] = sig
-                clear_whitepaper_index_cache()
-                container.success("학습 자료가 반영되었습니다.")
-                st.rerun()
-
-
-def render_top_navigation() -> None:
-    current = st.session_state.get("active_page", "대시보드")
-    if current not in MENU_OPTIONS:
-        current = "대시보드"
-    html_block(f"""
-    <div class='top-nav-shell'>
-        <div class='top-nav-title'>빠른 이동 · {safe_text(current)}</div>
-        <div class='top-nav-help'>사이드바를 닫아도 주요 화면 이동과 학습 자료 업로드를 여기서 계속 사용할 수 있습니다.</div>
-    </div>
-    """)
-    cols = st.columns(len(MENU_OPTIONS))
-    for col, page_name in zip(cols, MENU_OPTIONS):
-        label = f"● {page_name}" if page_name == current else page_name
-        if col.button(label, key=f"top_nav_{page_name}", use_container_width=True, disabled=(page_name == current)):
-            request_nav(page_name)
-    with st.expander("학습 자료 관리", expanded=False):
-        render_whitepaper_upload_widget(st)
 
 
 def render_sidebar() -> str:
@@ -2103,14 +1928,31 @@ def render_sidebar() -> str:
         st.rerun()
 
     st.sidebar.markdown("<div class='side-label'>학습 자료</div>", unsafe_allow_html=True)
-    st.sidebar.caption("업로드와 자료 교체는 본문 상단의 ‘학습 자료 관리’에서 할 수 있습니다.")
+    uploaded = st.sidebar.file_uploader(
+        "백서 / 커리큘럼 업로드",
+        type=["docx", "pdf", "txt"],
+        key="whitepaper_uploader",
+    )
+    st.sidebar.caption("DOCX/PDF/TXT 형식의 백서, 커리큘럼, FAQ, 수업 안내 자료를 올리면 앱의 검색 기준으로 사용됩니다.")
+    if uploaded is not None:
+        sig = upload_signature(uploaded)
+        if sig != st.session_state.get("last_whitepaper_upload_sig"):
+            preview_text = parse_uploaded_file(uploaded, max_chars=1500)
+            if not preview_text.strip():
+                st.session_state["last_whitepaper_upload_sig"] = sig
+                st.sidebar.warning("텍스트를 추출할 수 없는 파일입니다. DOCX, 텍스트가 포함된 PDF, TXT 자료를 다시 올려 주세요.")
+            else:
+                target, payload = replace_current_whitepaper(uploaded)
+                save_whitepaper_meta(uploaded.name, target, len(payload))
+                st.session_state["last_whitepaper_upload_sig"] = sig
+                clear_whitepaper_index_cache()
+                st.sidebar.success("학습 자료가 반영되었습니다.")
+                st.rerun()
 
     st.sidebar.divider()
     if st.sidebar.button("로그아웃", use_container_width=True):
         st.session_state["authenticated"] = False
         st.session_state["login_error"] = ""
-        st.session_state["login_restored"] = False
-        clear_login_token()
         st.rerun()
 
     return page
@@ -2503,97 +2345,6 @@ def build_learning_plan(topic: str, hours: int, days: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def calendar_kind_color(kind: str) -> str:
-    palette = {
-        "수업": "#2F6F5E",
-        "시험": "#B94A48",
-        "스터디": "#4F7C8A",
-        "공모전": "#DFAE43",
-        "채용": "#C9822B",
-        "개인": "#6C7A89",
-    }
-    return palette.get(kind, "#6C7A89")
-
-
-def normalize_calendar_events(events: List[Dict[str, Any]]) -> pd.DataFrame:
-    if not events:
-        return pd.DataFrame(columns=["id", "title", "date", "kind", "note"])
-    df = pd.DataFrame(events)
-    for col in ["id", "title", "date", "kind", "note"]:
-        if col not in df.columns:
-            df[col] = ""
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    df = df.dropna(subset=["date"]).copy()
-    return df.sort_values("date")
-
-
-def render_monthly_calendar(events: List[Dict[str, Any]]) -> None:
-    df = normalize_calendar_events(events)
-    html_block("""
-    <div class='calendar-legend'>
-        <span>수업</span><span>시험</span><span>스터디</span><span>공모전</span><span>채용</span><span>개인</span>
-    </div>
-    """)
-    if streamlit_calendar is not None:
-        calendar_events = []
-        for _, row in df.iterrows():
-            kind = str(row.get("kind", "개인"))
-            title = f"[{kind}] {row.get('title', '')}"
-            day = row["date"].date().isoformat()
-            color = calendar_kind_color(kind)
-            calendar_events.append({
-                "id": str(row.get("id", "")),
-                "title": title,
-                "start": day,
-                "allDay": True,
-                "backgroundColor": color,
-                "borderColor": color,
-            })
-        options = {
-            "initialView": "dayGridMonth",
-            "locale": "ko",
-            "height": 620,
-            "dayMaxEvents": True,
-            "headerToolbar": {
-                "left": "prev,next today",
-                "center": "title",
-                "right": "dayGridMonth,listMonth",
-            },
-        }
-        try:
-            streamlit_calendar(events=calendar_events, options=options, key="monthly_calendar_component")
-            return
-        except Exception:
-            notice_card("달력 표시 안내", "달력 컴포넌트를 불러오지 못해 표 형태 월간 달력으로 표시합니다.", badge="대체 표시", kind="info")
-
-    today = date.today()
-    month_options = sorted(df["date"].dt.strftime("%Y-%m").dropna().unique().tolist()) if not df.empty else []
-    current_month = today.strftime("%Y-%m")
-    if current_month not in month_options:
-        month_options = [current_month] + month_options
-    selected_month = st.selectbox("월 선택", month_options, index=month_options.index(current_month) if current_month in month_options else 0)
-    year, month = map(int, selected_month.split("-"))
-    events_by_day: Dict[int, List[str]] = {}
-    if not df.empty:
-        month_df = df[df["date"].dt.strftime("%Y-%m") == selected_month]
-        for _, row in month_df.iterrows():
-            events_by_day.setdefault(int(row["date"].day), []).append(f"[{row.get('kind','')}] {row.get('title','')}")
-    weeks = py_calendar.Calendar(firstweekday=6).monthdayscalendar(year, month)
-    rows = []
-    for week in weeks:
-        row = {}
-        for label, day_no in zip(["일", "월", "화", "수", "목", "금", "토"], week):
-            if day_no == 0:
-                row[label] = ""
-            else:
-                events_text = "\n".join([f"- {item}" for item in events_by_day.get(day_no, [])])
-                row[label] = f"{day_no}" + (f"\n{events_text}" if events_text else "")
-        rows.append(row)
-    st.markdown("<div class='calendar-fallback'>", unsafe_allow_html=True)
-    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
 def page_plan_curriculum() -> None:
     hero("일정·커리큘럼", "커리큘럼, 학습 플래너, 캘린더를 한 화면에서 관리합니다.")
     tabs = st.tabs(["커리큘럼", "학습 플래너", "캘린더"])
@@ -2633,43 +2384,35 @@ def page_plan_curriculum() -> None:
                 st.success("학습 계획이 캘린더에 추가되었습니다.")
 
     with tabs[2]:
-        section("월간 캘린더", "수업, 시험, 스터디, 공모전, 채용 마감일을 월간 달력으로 확인합니다.")
-        with st.expander("일정 추가", expanded=True):
+        left, right = st.columns(2)
+        with left:
+            section("일정 추가")
             with st.form("calendar_add"):
                 title = st.text_input("일정명")
                 event_date = st.date_input("날짜", value=date.today())
                 kind = st.selectbox("구분", ["수업", "시험", "스터디", "공모전", "채용", "개인"])
                 note = st.text_area("메모", height=90)
                 ok = st.form_submit_button("일정 저장")
-                if ok:
-                    if not title.strip():
-                        notice_card("일정명 필요", "일정명을 입력해야 저장할 수 있습니다.", badge="입력 확인", kind="warning")
-                    else:
-                        add_calendar_event(title.strip(), event_date.isoformat(), kind, note)
-                        st.success("일정이 저장되었습니다.")
-                        st.rerun()
-
-        events = read_calendar()
-        if not events:
-            empty_state("등록된 일정이 없습니다", "수업, 시험, 스터디, 공고 마감일을 추가해 학습 흐름을 관리하세요.")
-        else:
-            render_monthly_calendar(events)
-            df = normalize_calendar_events(events)
-            section("일정 목록")
-            if df.empty:
-                empty_state("표시할 일정이 없습니다", "날짜 형식이 올바른 일정만 캘린더에 표시됩니다.")
+                if ok and title.strip():
+                    add_calendar_event(title.strip(), event_date.isoformat(), kind, note)
+                    st.success("일정이 저장되었습니다.")
+        with right:
+            section("캘린더")
+            events = read_calendar()
+            if not events:
+                empty_state("등록된 일정이 없습니다", "수업, 시험, 스터디, 공고 마감일을 추가해 학습 흐름을 관리하세요.")
             else:
-                view = df.copy()
-                view["date"] = view["date"].dt.strftime("%Y-%m-%d")
-                st.dataframe(view[["date", "kind", "title", "note"]], hide_index=True, use_container_width=True)
-                deletable = view[~view["id"].astype(str).str.startswith("default_")]
+                df = pd.DataFrame(events)
+                df["date"] = pd.to_datetime(df["date"], errors="coerce")
+                months = sorted(df["date"].dt.strftime("%Y-%m").dropna().unique().tolist())
+                month = st.selectbox("월 필터", ["전체"] + months)
+                display = df if month == "전체" else df[df["date"].dt.strftime("%Y-%m") == month]
+                display = display.sort_values("date")
+                st.dataframe(display[["date", "kind", "title", "note"]], hide_index=True, use_container_width=True)
+                deletable = display[~display["id"].astype(str).str.startswith("default_")]
                 if not deletable.empty:
-                    target = st.selectbox(
-                        "삭제할 일정",
-                        [""] + deletable["id"].tolist(),
-                        format_func=lambda eid: "선택 안 함" if not eid else deletable.loc[deletable["id"] == eid, "title"].iloc[0],
-                    )
-                    if target and st.button("선택 일정 삭제", use_container_width=True):
+                    target = st.selectbox("삭제할 일정", [""] + deletable["id"].tolist(), format_func=lambda eid: "선택 안 함" if not eid else deletable.loc[deletable["id"] == eid, "title"].iloc[0])
+                    if target and st.button("선택 일정 삭제"):
                         delete_calendar_event(target)
                         st.rerun()
 
@@ -2731,8 +2474,7 @@ def main() -> None:
         render_login_page()
         return
     page = render_sidebar()
-    render_top_navigation()
-    PAGES.get(st.session_state.get("active_page", page), page_dashboard)()
+    PAGES.get(page, page_dashboard)()
 
 
 if __name__ == "__main__":
