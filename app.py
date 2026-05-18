@@ -2493,8 +2493,108 @@ def calendar_kind_color(kind: str) -> str:
         "공모전": "#DFAE43",
         "채용": "#B94A48",
         "개인": "#6C7A89",
+        "커리큘럼": "#2F6F5E",
+        "학습": "#4F7C8A",
+        "진단": "#C9822B",
+        "취업": "#B94A48",
+        "프로젝트": "#DFAE43",
     }
     return palette.get(str(kind or ""), "#6C7A89")
+
+
+def normalize_calendar_date(value: Any) -> Optional[str]:
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return None
+    return parsed.strftime("%Y-%m-%d")
+
+
+def parse_curriculum_period(period: str, year: int = 2026) -> Tuple[Optional[str], Optional[str]]:
+    matches = re.findall(r"(\d{1,2})\.(\d{1,2})", str(period or ""))
+    if not matches:
+        return None, None
+    start_month, start_day = map(int, matches[0])
+    end_month, end_day = map(int, matches[-1])
+    start_date = date(year, start_month, start_day)
+    end_date = date(year, end_month, end_day) + timedelta(days=1)
+    return start_date.isoformat(), end_date.isoformat()
+
+
+def curriculum_calendar_events(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    for idx, row in enumerate(rows or []):
+        start, end = parse_curriculum_period(str(row.get("period", "")))
+        if not start:
+            continue
+        kind = str(row.get("kind", "커리큘럼"))
+        topic = str(row.get("topic", "커리큘럼"))
+        week = str(row.get("week", ""))
+        events.append({
+            "id": f"curriculum_{idx}",
+            "title": f"{week} · {topic}".strip(" ·"),
+            "date": start,
+            "end": end,
+            "kind": kind or "커리큘럼",
+            "note": str(row.get("note", "")),
+        })
+    return events
+
+
+def learning_plan_calendar_events(plan: pd.DataFrame) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    if not isinstance(plan, pd.DataFrame) or plan.empty:
+        return events
+    for idx, row in plan.iterrows():
+        event_date = normalize_calendar_date(row.get("날짜"))
+        if not event_date:
+            continue
+        topic = str(row.get("주제", "학습"))
+        todo = str(row.get("할 일", ""))
+        events.append({
+            "id": f"plan_{idx}",
+            "title": f"학습: {topic}",
+            "date": event_date,
+            "kind": "학습",
+            "note": todo,
+        })
+    return events
+
+
+def diagnosis_calendar_events(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    for idx, item in enumerate(results or []):
+        event_date = normalize_calendar_date(item.get("time"))
+        if not event_date:
+            continue
+        topic = str(item.get("topic", "진단"))
+        score = item.get("score", "-")
+        level = str(item.get("level", ""))
+        events.append({
+            "id": f"diagnosis_{idx}",
+            "title": f"진단: {topic} {score}점",
+            "date": event_date,
+            "kind": "진단",
+            "note": level,
+        })
+    return events
+
+
+def career_report_calendar_events(reports: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    for idx, item in enumerate(reports or []):
+        event_date = normalize_calendar_date(item.get("time"))
+        if not event_date:
+            continue
+        report_type = str(item.get("type", "취업"))
+        title = str(item.get("title", report_type))
+        events.append({
+            "id": f"career_{idx}",
+            "title": f"취업: {title}",
+            "date": event_date,
+            "kind": "취업",
+            "note": report_type,
+        })
+    return events
 
 
 def to_calendar_component_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -2506,14 +2606,18 @@ def to_calendar_component_events(events: List[Dict[str, Any]]) -> List[Dict[str,
         kind = str(item.get("kind", "일정"))
         title = str(item.get("title", "일정"))
         color = calendar_kind_color(kind)
-        component_events.append({
+        component_event = {
             "id": str(item.get("id", uuid.uuid4())),
             "title": f"[{kind}] {title}",
             "start": event_date,
             "allDay": True,
             "backgroundColor": color,
             "borderColor": color,
-        })
+        }
+        end_date = str(item.get("end", ""))[:10]
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", end_date):
+            component_event["end"] = end_date
+        component_events.append(component_event)
     return component_events
 
 
@@ -2545,7 +2649,7 @@ def render_fallback_month_calendar(events: List[Dict[str, Any]], year: int, mont
     html_block("".join(rows))
 
 
-def render_month_calendar(events: List[Dict[str, Any]], year: int, month: int) -> None:
+def render_month_calendar(events: List[Dict[str, Any]], year: int, month: int, key_prefix: str = "calendar_component") -> None:
     component_events = to_calendar_component_events(events)
     initial_date = f"{year:04d}-{month:02d}-01"
     if streamlit_calendar is not None:
@@ -2564,7 +2668,7 @@ def render_month_calendar(events: List[Dict[str, Any]], year: int, month: int) -
                     },
                     "buttonText": {"today": "오늘", "month": "월", "list": "목록"},
                 },
-                key=f"calendar_component_{year}_{month}",
+                key=f"{key_prefix}_{year}_{month}",
             )
             return
         except Exception:
@@ -2585,7 +2689,7 @@ def page_plan_curriculum() -> None:
     tabs = st.tabs(["커리큘럼", "학습 플래너", "캘린더"])
 
     with tabs[0]:
-        section("커리큘럼 확인")
+        section("커리큘럼 달력")
         df = pd.DataFrame(DEFAULT_CURRICULUM)
         c1, c2 = st.columns([.8, 1.2])
         with c1:
@@ -2595,7 +2699,17 @@ def page_plan_curriculum() -> None:
         filtered = df[df["kind"].isin(kind_filter)]
         if keyword:
             filtered = filtered[filtered.apply(lambda row: keyword.lower() in " ".join(map(str, row.values)).lower(), axis=1)]
-        st.dataframe(filtered, hide_index=True, use_container_width=True)
+        curriculum_events = curriculum_calendar_events(filtered.to_dict("records"))
+        if curriculum_events:
+            month_options = available_calendar_months(curriculum_events)
+            default_month = date.today().strftime("%Y-%m")
+            default_index = month_options.index(default_month) if default_month in month_options else 0
+            selected_month = st.selectbox("표시할 월", month_options, index=default_index, key="curriculum_calendar_month")
+            year, month = map(int, selected_month.split("-"))
+            render_month_calendar(curriculum_events, year, month, key_prefix="curriculum_calendar")
+            st.dataframe(filtered[["week", "period", "kind", "topic", "note"]], hide_index=True, use_container_width=True)
+        else:
+            empty_state("표시할 커리큘럼이 없습니다", "검색어 또는 구분 필터를 조정해 주세요.")
         st.divider()
         section("백서에서 추가 확인")
         query = st.text_input("백서 검색어", value=keyword or "커리큘럼")
@@ -2612,6 +2726,14 @@ def page_plan_curriculum() -> None:
             st.session_state["learning_plan"] = build_learning_plan(topic, hours, days)
         if isinstance(st.session_state.get("learning_plan"), pd.DataFrame):
             plan = st.session_state["learning_plan"]
+            plan_events = learning_plan_calendar_events(plan)
+            if plan_events:
+                month_options = available_calendar_months(plan_events)
+                default_month = date.today().strftime("%Y-%m")
+                default_index = month_options.index(default_month) if default_month in month_options else 0
+                selected_month = st.selectbox("표시할 월", month_options, index=default_index, key="plan_calendar_month")
+                year, month = map(int, selected_month.split("-"))
+                render_month_calendar(plan_events, year, month, key_prefix="plan_calendar")
             st.dataframe(plan, hide_index=True, use_container_width=True)
             if st.button("계획을 캘린더에 추가", use_container_width=True):
                 for _, row in plan.iterrows():
@@ -2696,17 +2818,28 @@ def page_learning_status() -> None:
     else:
         empty_state("최근 진단 기록이 없습니다", "예습·진단 메뉴에서 쪽지시험을 풀면 이곳에 기록됩니다.")
 
-    section("최근 일정")
     events = read_calendar()
-    if events:
-        df = pd.DataFrame(events)
+    reports = read_json(CAREER_REPORT_PATH, [])
+    status_events = events + diagnosis_calendar_events(results) + career_report_calendar_events(reports)
+
+    section("학습 현황 캘린더")
+    if status_events:
+        month_options = available_calendar_months(status_events)
+        default_month = date.today().strftime("%Y-%m")
+        default_index = month_options.index(default_month) if default_month in month_options else 0
+        selected_month = st.selectbox("표시할 월", month_options, index=default_index, key="status_calendar_month")
+        year, month = map(int, selected_month.split("-"))
+        render_month_calendar(status_events, year, month, key_prefix="status_calendar")
+
+        df = pd.DataFrame(status_events)
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        st.dataframe(df.sort_values("date").head(10)[["date", "kind", "title", "note"]], hide_index=True, use_container_width=True)
+        display = df[df["date"].dt.strftime("%Y-%m") == selected_month].sort_values("date")
+        if not display.empty:
+            st.dataframe(display[["date", "kind", "title", "note"]], hide_index=True, use_container_width=True)
     else:
-        empty_state("등록된 일정이 없습니다", "수업, 시험, 스터디, 공고 마감일을 추가해 학습 흐름을 관리하세요.")
+        empty_state("표시할 학습 기록이 없습니다", "진단, 일정, 취업 준비 기록이 생기면 달력에 함께 표시됩니다.")
 
     section("최근 취업 준비 기록")
-    reports = read_json(CAREER_REPORT_PATH, [])
     if reports:
         view = pd.DataFrame([{k: r.get(k) for k in ["time", "type", "title"]} for r in reports[-10:]])
         st.dataframe(view, hide_index=True, use_container_width=True)
