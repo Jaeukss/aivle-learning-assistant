@@ -1,15 +1,6 @@
 # AIVLE 학습도우미
 
-Streamlit 기반 학습자용 AI 학습 보조 앱입니다.
-
-## v13 수정 사항
-
-- HTML 카드 코드가 화면에 그대로 노출되는 문제 수정
-- 요약 카드를 Streamlit 네이티브 컨테이너로 변경
-- 학습 질의 화면에 고정 높이 대화창 추가
-- 대화 초기화 버튼 추가
-- 대화 기록이 페이지 전체에 계속 길게 쌓이지 않도록 최근 30개 메시지만 대화창에 표시
-- 사용자 입력값/파일명이 HTML로 노출되지 않도록 이스케이프 처리
+Streamlit 기반 백서 학습 지원 앱입니다.
 
 ## 실행
 
@@ -18,11 +9,34 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## 환경변수 또는 Streamlit Secrets
+## Streamlit Secrets 예시
 
 ```toml
-OPENAI_API_KEY = "본인 OpenAI API 키"
+OPENAI_API_KEY = "sk-..."
 OPENAI_MODEL = "gpt-4o-mini"
 APP_LOGIN_ID = "admin"
 APP_LOGIN_PASSWORD = "aivle2026"
+```
+
+## 주요 기능
+
+- 백서 기반 학습 질의응답
+- 추천 질문 버튼
+- 예습 자료 생성
+- 쪽지시험 생성
+- 학습 등급 판별
+- 부족한 주제 시각화
+- 오답노트
+- 공고 정리 / 캘린더
+- 커리큘럼 확인
+- 대화 목록 저장
+
+## 폴더 구조
+
+```text
+app.py
+requirements.txt
+.streamlit/config.toml
+data/aivle_kt_learning_whitepaper_2026.docx
+storage/
 ```
