@@ -1,6 +1,8 @@
 
 from __future__ import annotations
 
+import base64
+import calendar as py_calendar
 import hashlib
 import hmac
 import html
@@ -17,6 +19,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
+
+try:
+    from streamlit_calendar import calendar as streamlit_calendar
+except Exception:
+    streamlit_calendar = None
 
 try:
     import altair as alt
@@ -204,10 +211,17 @@ st.markdown(textwrap.dedent(
     small, .small-help { color: var(--muted) !important; font-size: .82rem; line-height: 1.5; }
 
     header[data-testid="stHeader"] { background: transparent !important; }
-    [data-testid="stToolbar"], [data-testid="stStatusWidget"], [data-testid="stDeployButton"], .stDeployButton {
+    /* 사이드바 열기/닫기 버튼이 사라지지 않도록 header와 toolbar 전체를 숨기지 않습니다. */
+    [data-testid="stDeployButton"], .stDeployButton {
         display: none !important;
         visibility: hidden !important;
-        height: 0 !important;
+    }
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        z-index: 999999 !important;
     }
 
     section[data-testid="stSidebar"] {
@@ -513,6 +527,72 @@ st.markdown(textwrap.dedent(
         margin: -2px 0 8px 0;
     }
 
+    .month-calendar {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        box-shadow: var(--shadow-soft);
+        padding: 14px;
+        overflow-x: auto;
+    }
+    .month-calendar table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 8px;
+        table-layout: fixed;
+    }
+    .month-calendar th {
+        color: var(--primary);
+        font-size: .86rem;
+        font-weight: 900;
+        text-align: center;
+        padding: 8px 4px;
+    }
+    .month-calendar td {
+        vertical-align: top;
+        height: 112px;
+        min-width: 110px;
+        background: #FFFEFB;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 8px;
+    }
+    .month-calendar td.empty {
+        background: #F4F1EA;
+        opacity: .72;
+    }
+    .calendar-day {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        font-weight: 900;
+        color: #111827;
+        margin-bottom: 5px;
+    }
+    .calendar-day.today {
+        background: var(--primary);
+        color: white;
+    }
+    .calendar-event {
+        display: block;
+        margin-top: 4px;
+        padding: 5px 7px;
+        border-radius: 10px;
+        background: rgba(47,111,94,.10);
+        color: #1F2933;
+        font-size: .78rem;
+        line-height: 1.32;
+        border-left: 3px solid var(--primary);
+        word-break: keep-all;
+        overflow-wrap: anywhere;
+    }
+    .calendar-event.exam { border-left-color: var(--secondary); background: rgba(223,174,67,.16); }
+    .calendar-event.job { border-left-color: var(--info); background: rgba(79,124,138,.13); }
+    .calendar-event.contest { border-left-color: var(--warning); background: rgba(201,130,43,.13); }
+
     @media (max-width: 1199px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .routine-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 767px) { .summary-grid, .routine-strip { grid-template-columns: 1fr; } .learning-hero { padding: 22px 18px; } .main .block-container { padding-left: .9rem; padding-right: .9rem; } }
     </style>
@@ -645,18 +725,97 @@ def save_whitepaper_meta(display_name: str, path: Path, size_bytes: int) -> None
     )
 
 
+def get_login_secret() -> str:
+    login_id, login_pw = get_login_credentials()
+    return get_config_value("APP_LOGIN_SECRET", f"{login_id}:{login_pw}:{APP_TITLE}") or f"{login_id}:{login_pw}:{APP_TITLE}"
+
+
+def make_auth_token(login_id: str) -> str:
+    issued_at = int(datetime.now().timestamp())
+    payload = f"{login_id}:{issued_at}"
+    signature = hmac.new(get_login_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    token = f"{payload}:{signature}"
+    return base64.urlsafe_b64encode(token.encode("utf-8")).decode("ascii")
+
+
+def verify_auth_token(token: str, max_age_days: int = 30) -> bool:
+    if not token:
+        return False
+    try:
+        raw = base64.urlsafe_b64decode(token.encode("ascii")).decode("utf-8")
+        login_id, issued_at, signature = raw.rsplit(":", 2)
+        issued = int(issued_at)
+    except Exception:
+        return False
+    expected_id, _ = get_login_credentials()
+    if not hmac.compare_digest(login_id, expected_id):
+        return False
+    payload = f"{login_id}:{issued}"
+    expected_sig = hmac.new(get_login_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected_sig):
+        return False
+    age_seconds = datetime.now().timestamp() - issued
+    return 0 <= age_seconds <= max_age_days * 24 * 60 * 60
+
+
+def get_query_param(name: str) -> str:
+    try:
+        value = st.query_params.get(name, "")
+    except Exception:
+        return ""
+    if isinstance(value, list):
+        return str(value[0]) if value else ""
+    return str(value or "")
+
+
+def set_query_param(name: str, value: str) -> None:
+    try:
+        st.query_params[name] = value
+    except Exception:
+        pass
+
+
+def clear_query_param(name: str) -> None:
+    try:
+        if name in st.query_params:
+            del st.query_params[name]
+    except Exception:
+        pass
+
+
+def restore_login_from_token() -> None:
+    if st.session_state.get("authenticated"):
+        return
+    token = get_query_param("auth")
+    if verify_auth_token(token):
+        st.session_state["authenticated"] = True
+        st.session_state["login_error"] = ""
+
+
+def sync_sidebar_page() -> None:
+    selected = st.session_state.get("sidebar_page", "대시보드")
+    st.session_state["active_page"] = selected if selected in MENU_OPTIONS else "대시보드"
+
+
 def init_state() -> None:
     st.session_state.setdefault("authenticated", False)
     st.session_state.setdefault("login_error", "")
     st.session_state.setdefault("active_page", "대시보드")
+    st.session_state.setdefault("sidebar_page", st.session_state.get("active_page", "대시보드"))
     st.session_state.setdefault("nav_target", None)
     st.session_state.setdefault("last_whitepaper_upload_sig", "")
     if st.session_state["active_page"] not in MENU_OPTIONS:
         st.session_state["active_page"] = "대시보드"
+    if st.session_state.get("sidebar_page") not in MENU_OPTIONS:
+        st.session_state["sidebar_page"] = st.session_state["active_page"]
+    restore_login_from_token()
 
 
 def request_nav(page: str) -> None:
-    st.session_state["nav_target"] = page if page in MENU_OPTIONS else "대시보드"
+    target = page if page in MENU_OPTIONS else "대시보드"
+    st.session_state["active_page"] = target
+    st.session_state["sidebar_page"] = target
+    st.session_state["nav_target"] = None
     st.rerun()
 
 
@@ -1862,6 +2021,7 @@ def render_login_page() -> None:
             if authenticate(login_id, login_pw):
                 st.session_state["authenticated"] = True
                 st.session_state["login_error"] = ""
+                set_query_param("auth", make_auth_token(login_id))
                 st.rerun()
             st.session_state["login_error"] = "아이디 또는 비밀번호가 올바르지 않습니다."
         if st.session_state.get("login_error"):
@@ -1872,6 +2032,7 @@ def render_sidebar() -> str:
     nav_target = st.session_state.get("nav_target")
     if nav_target in MENU_OPTIONS:
         st.session_state["active_page"] = nav_target
+        st.session_state["sidebar_page"] = nav_target
     st.session_state["nav_target"] = None
 
     st.sidebar.markdown(textwrap.dedent("""
@@ -1897,8 +2058,10 @@ def render_sidebar() -> str:
     current_page = st.session_state.get("active_page", "대시보드")
     if current_page not in MENU_OPTIONS:
         current_page = "대시보드"
-    page = st.sidebar.radio("학습 메뉴", MENU_OPTIONS, index=MENU_OPTIONS.index(current_page))
-    st.session_state["active_page"] = page
+    if st.session_state.get("sidebar_page") != current_page:
+        st.session_state["sidebar_page"] = current_page
+    st.sidebar.radio("학습 메뉴", MENU_OPTIONS, key="sidebar_page", on_change=sync_sidebar_page)
+    page = st.session_state.get("active_page", current_page)
     st.sidebar.markdown(f"<div class='current-pill'>현재 화면 · {page}</div>", unsafe_allow_html=True)
 
     if st.sidebar.button("새 학습 대화", use_container_width=True):
@@ -1953,6 +2116,7 @@ def render_sidebar() -> str:
     if st.sidebar.button("로그아웃", use_container_width=True):
         st.session_state["authenticated"] = False
         st.session_state["login_error"] = ""
+        clear_query_param("auth")
         st.rerun()
 
     return page
@@ -2345,6 +2509,110 @@ def build_learning_plan(topic: str, hours: int, days: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+
+def event_kind_class(kind: str) -> str:
+    kind = str(kind or "")
+    if kind in ["시험", "수업"]:
+        return "exam"
+    if kind in ["채용"]:
+        return "job"
+    if kind in ["공모전"]:
+        return "contest"
+    return ""
+
+
+def render_month_calendar_html(events: List[Dict[str, Any]], year: int, month: int) -> None:
+    """streamlit-calendar가 없을 때도 보이는 월간 달력형 UI입니다."""
+    cal = py_calendar.Calendar(firstweekday=6)  # 일요일 시작
+    events_by_date: Dict[str, List[Dict[str, Any]]] = {}
+    for event in events:
+        event_date = str(event.get("date", ""))[:10]
+        events_by_date.setdefault(event_date, []).append(event)
+
+    today_key = date.today().isoformat()
+    rows = []
+    for week in cal.monthdayscalendar(year, month):
+        cells = []
+        for day in week:
+            if day == 0:
+                cells.append("<td class='empty'></td>")
+                continue
+            key = f"{year:04d}-{month:02d}-{day:02d}"
+            day_class = "calendar-day today" if key == today_key else "calendar-day"
+            day_events = events_by_date.get(key, [])
+            event_html = "".join(
+                f"<span class='calendar-event {event_kind_class(ev.get('kind', ''))}'>{safe_text(ev.get('kind', '일정'))} · {safe_text(ev.get('title', '일정'))}</span>"
+                for ev in day_events[:4]
+            )
+            if len(day_events) > 4:
+                event_html += f"<span class='calendar-event'>+{len(day_events)-4}개 더 있음</span>"
+            cells.append(f"<td><span class='{day_class}'>{day}</span>{event_html}</td>")
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    month_title = f"{year}년 {month}월"
+    html_block(f"""
+    <div class='month-calendar'>
+        <div style='display:flex;justify-content:space-between;align-items:center;margin:2px 8px 10px 8px;'>
+            <h3 style='margin:0;color:#111827;'>{month_title}</h3>
+            <span class='status-badge badge-info'>월간 캘린더</span>
+        </div>
+        <table>
+            <thead><tr><th>일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th></tr></thead>
+            <tbody>{''.join(rows)}</tbody>
+        </table>
+    </div>
+    """)
+
+
+def render_streamlit_calendar(events: List[Dict[str, Any]], year: int, month: int) -> bool:
+    """streamlit-calendar가 설치된 경우 월간 달력 컴포넌트를 사용합니다."""
+    if streamlit_calendar is None:
+        return False
+    try:
+        calendar_events = []
+        color_map = {
+            "수업": "#DFAE43",
+            "시험": "#DFAE43",
+            "스터디": "#2F6F5E",
+            "공모전": "#C9822B",
+            "채용": "#4F7C8A",
+            "개인": "#6C7A89",
+        }
+        for event in events:
+            event_date = str(event.get("date", ""))[:10]
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", event_date):
+                continue
+            kind = str(event.get("kind", "일정"))
+            calendar_events.append({
+                "title": f"{kind} · {event.get('title', '일정')}",
+                "start": event_date,
+                "allDay": True,
+                "backgroundColor": color_map.get(kind, "#2F6F5E"),
+                "borderColor": color_map.get(kind, "#2F6F5E"),
+            })
+        options = {
+            "initialView": "dayGridMonth",
+            "initialDate": f"{year:04d}-{month:02d}-01",
+            "locale": "ko",
+            "height": 620,
+            "headerToolbar": {"left": "prev,next today", "center": "title", "right": "dayGridMonth,listMonth"},
+        }
+        streamlit_calendar(
+            events=calendar_events,
+            options=options,
+            custom_css="""
+            .fc { font-family: 'Pretendard Variable', Pretendard, sans-serif; }
+            .fc-toolbar-title { color: #111827; font-weight: 900; }
+            .fc-button-primary { background: #2F6F5E !important; border-color: #2F6F5E !important; }
+            .fc-event { border-radius: 8px; padding: 2px 4px; font-size: 12px; }
+            """,
+            key=f"monthly_calendar_{year}_{month}",
+        )
+        return True
+    except Exception:
+        return False
+
+
 def page_plan_curriculum() -> None:
     hero("일정·커리큘럼", "커리큘럼, 학습 플래너, 캘린더를 한 화면에서 관리합니다.")
     tabs = st.tabs(["커리큘럼", "학습 플래너", "캘린더"])
@@ -2384,37 +2652,63 @@ def page_plan_curriculum() -> None:
                 st.success("학습 계획이 캘린더에 추가되었습니다.")
 
     with tabs[2]:
-        left, right = st.columns(2)
-        with left:
-            section("일정 추가")
-            with st.form("calendar_add"):
-                title = st.text_input("일정명")
-                event_date = st.date_input("날짜", value=date.today())
-                kind = st.selectbox("구분", ["수업", "시험", "스터디", "공모전", "채용", "개인"])
-                note = st.text_area("메모", height=90)
-                ok = st.form_submit_button("일정 저장")
-                if ok and title.strip():
-                    add_calendar_event(title.strip(), event_date.isoformat(), kind, note)
-                    st.success("일정이 저장되었습니다.")
-        with right:
-            section("캘린더")
-            events = read_calendar()
-            if not events:
-                empty_state("등록된 일정이 없습니다", "수업, 시험, 스터디, 공고 마감일을 추가해 학습 흐름을 관리하세요.")
-            else:
-                df = pd.DataFrame(events)
-                df["date"] = pd.to_datetime(df["date"], errors="coerce")
-                months = sorted(df["date"].dt.strftime("%Y-%m").dropna().unique().tolist())
-                month = st.selectbox("월 필터", ["전체"] + months)
-                display = df if month == "전체" else df[df["date"].dt.strftime("%Y-%m") == month]
-                display = display.sort_values("date")
-                st.dataframe(display[["date", "kind", "title", "note"]], hide_index=True, use_container_width=True)
-                deletable = display[~display["id"].astype(str).str.startswith("default_")]
-                if not deletable.empty:
-                    target = st.selectbox("삭제할 일정", [""] + deletable["id"].tolist(), format_func=lambda eid: "선택 안 함" if not eid else deletable.loc[deletable["id"] == eid, "title"].iloc[0])
-                    if target and st.button("선택 일정 삭제"):
-                        delete_calendar_event(target)
-                        st.rerun()
+        section("캘린더", "월간 달력에서 수업, 시험, 스터디, 공모전, 채용 마감일을 함께 확인합니다.")
+        events = read_calendar()
+        today = date.today()
+        col_month, col_add = st.columns([1.1, .9])
+        with col_month:
+            month_options = []
+            for offset in range(-6, 13):
+                y = today.year + ((today.month + offset - 1) // 12)
+                m = ((today.month + offset - 1) % 12) + 1
+                month_options.append(f"{y:04d}-{m:02d}")
+            default_month = f"{today.year:04d}-{today.month:02d}"
+            selected_month = st.selectbox(
+                "월 선택",
+                month_options,
+                index=month_options.index(default_month) if default_month in month_options else 6,
+                key="calendar_month_selector",
+            )
+            year, month_num = map(int, selected_month.split("-"))
+        with col_add:
+            with st.expander("일정 추가", expanded=False):
+                with st.form("calendar_add"):
+                    title = st.text_input("일정명")
+                    event_date = st.date_input("날짜", value=today)
+                    kind = st.selectbox("구분", ["수업", "시험", "스터디", "공모전", "채용", "개인"])
+                    note = st.text_area("메모", height=90)
+                    ok = st.form_submit_button("일정 저장")
+                    if ok:
+                        if title.strip():
+                            add_calendar_event(title.strip(), event_date.isoformat(), kind, note)
+                            st.success("일정이 저장되었습니다.")
+                            st.rerun()
+                        else:
+                            notice_card("일정명 필요", "일정명을 입력한 뒤 저장해 주세요.", badge="입력 확인", kind="warning")
+
+        month_events = [event for event in events if str(event.get("date", ""))[:7] == selected_month]
+        if not render_streamlit_calendar(events, year, month_num):
+            render_month_calendar_html(events, year, month_num)
+
+        section("선택한 월 일정")
+        if not month_events:
+            empty_state("선택한 월에 등록된 일정이 없습니다", "일정을 추가하면 월간 달력과 목록에 함께 표시됩니다.")
+        else:
+            df = pd.DataFrame(month_events)
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            df = df.sort_values("date")
+            st.dataframe(df[["date", "kind", "title", "note"]], hide_index=True, use_container_width=True)
+            deletable = df[~df["id"].astype(str).str.startswith("default_")]
+            if not deletable.empty:
+                target = st.selectbox(
+                    "삭제할 일정",
+                    [""] + deletable["id"].astype(str).tolist(),
+                    format_func=lambda eid: "선택 안 함" if not eid else str(deletable.loc[deletable["id"].astype(str) == eid, "title"].iloc[0]),
+                    key="calendar_delete_target",
+                )
+                if target and st.button("선택 일정 삭제"):
+                    delete_calendar_event(target)
+                    st.rerun()
 
 
 def page_learning_status() -> None:
