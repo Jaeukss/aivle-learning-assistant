@@ -58,6 +58,7 @@ WHITEPAPER_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 APP_TITLE = "AIVLE 학습도우미"
+OPENROUTER_APP_TITLE = "AIVLE Learning Assistant"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-flash:free"
 FALLBACK_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
@@ -1062,7 +1063,8 @@ def call_openrouter_model(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "X-Title": APP_TITLE,
+        # HTTP header values must be latin-1 encodable. Keep this ASCII-only.
+        "X-Title": OPENROUTER_APP_TITLE,
     }
     try:
         response = requests.post(
