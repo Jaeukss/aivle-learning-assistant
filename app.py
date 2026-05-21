@@ -1090,7 +1090,7 @@ def call_openrouter_model(
     return content.strip()
 
 
-def call_openrouter_with_fallback(
+def call_openrouter(
     messages: List[Dict[str, str]],
     temperature: float = 0.2,
     max_tokens: int = 1000,
@@ -1119,7 +1119,7 @@ def call_openrouter_with_fallback(
 
 
 def ask_llm(system_prompt: str, user_prompt: str, temperature: float = 0.15) -> Optional[str]:
-    return call_openrouter_with_fallback(
+    return call_openrouter(
         [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
