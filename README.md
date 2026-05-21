@@ -51,6 +51,5 @@ APP_LOGIN_ID = "admin"
 APP_LOGIN_PASSWORD = "aivle2026"
 ```
 
-LLM 생성은 OpenRouter API를 사용합니다. 기본 모델은 `deepseek/deepseek-v4-flash:free`이고,
-호출 실패 시 `nvidia/nemotron-3-super-120b-a12b:free`로 자동 fallback합니다.
+LLM 생성은 OpenRouter API를 사용합니다. 기본 모델은 `nvidia/nemotron-3-super-120b-a12b:free` 단일 모델입니다.
 API key가 없으면 백서 검색과 로컬 fallback 답변은 계속 동작하지만, 생성형 답변 품질은 제한됩니다.
