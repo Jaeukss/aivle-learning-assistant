@@ -7,6 +7,7 @@ import html
 import json
 import os
 import re
+import logging
 import textwrap
 import uuid
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
+import requests
 import streamlit as st
 
 try:
@@ -41,12 +43,6 @@ try:
 except Exception:
     PdfReader = None
 
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
-
-
 # ============================================================
 # 기본 설정
 # ============================================================
@@ -62,7 +58,10 @@ WHITEPAPER_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 APP_TITLE = "AIVLE 학습도우미"
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-flash:free"
+FALLBACK_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+OPENROUTER_TIMEOUT_SECONDS = 30
 CURRENT_WHITEPAPER_STEM = "current_whitepaper"
 WHITEPAPER_EXTENSIONS = {".docx", ".pdf", ".txt"}
 BUNDLED_WHITEPAPER_PATH = DATA_DIR / "aivle_kt_learning_whitepaper_2026.docx"
@@ -74,6 +73,7 @@ WRONG_NOTE_PATH = STORE_DIR / "wrong_notes.json"
 CALENDAR_PATH = STORE_DIR / "calendar_events.json"
 CHECKLIST_PATH = STORE_DIR / "daily_checklist.json"
 CAREER_REPORT_PATH = STORE_DIR / "career_reports.json"
+logger = logging.getLogger(__name__)
 
 try:
     if not any(WHITEPAPER_DIR.glob(f"{CURRENT_WHITEPAPER_STEM}.*")) and BUNDLED_WHITEPAPER_PATH.exists():
@@ -688,7 +688,7 @@ def get_config_value(name: str, default: Optional[str] = None) -> Optional[str]:
 
 
 def get_api_key() -> Optional[str]:
-    return get_config_value("OPENAI_API_KEY")
+    return get_config_value("OPENROUTER_API_KEY")
 
 
 def get_login_credentials() -> Tuple[str, str]:
@@ -1032,29 +1032,115 @@ def search_whitepaper(query: str, k: int = 6) -> List[SearchHit]:
 # ============================================================
 
 
-def get_client() -> Optional[Any]:
-    key = get_api_key()
-    if not key or OpenAI is None:
+class OpenRouterCallError(RuntimeError):
+    """API key를 포함하지 않는 안전한 OpenRouter 오류입니다."""
+
+
+def safe_openrouter_error(error: Exception) -> str:
+    if isinstance(error, OpenRouterCallError) and str(error):
+        return str(error)
+    response = getattr(error, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if status_code:
+        return f"HTTP {status_code}"
+    return error.__class__.__name__
+
+
+def call_openrouter_model(
+    model: str,
+    messages: List[Dict[str, str]],
+    api_key: str,
+    temperature: float,
+    max_tokens: int,
+) -> str:
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Title": APP_TITLE,
+    }
+    try:
+        response = requests.post(
+            OPENROUTER_ENDPOINT,
+            headers=headers,
+            json=payload,
+            timeout=OPENROUTER_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+    except requests.RequestException as error:
+        raise OpenRouterCallError(safe_openrouter_error(error)) from error
+
+    try:
+        data = response.json()
+    except ValueError as error:
+        raise OpenRouterCallError("invalid_json_response") from error
+
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as error:
+        raise OpenRouterCallError("missing_message_content") from error
+
+    if not isinstance(content, str) or not content.strip():
+        raise OpenRouterCallError("empty_message_content")
+    return content.strip()
+
+
+def call_openrouter_with_fallback(
+    messages: List[Dict[str, str]],
+    temperature: float = 0.2,
+    max_tokens: int = 1000,
+) -> Optional[str]:
+    """
+    1차: deepseek/deepseek-v4-flash:free
+    실패 시: nvidia/nemotron-3-super-120b-a12b:free
+    둘 다 실패하면 화면에는 안전한 에러 메시지만 표시합니다.
+    """
+
+    api_key = get_api_key()
+    if not api_key:
         return None
-    return OpenAI(api_key=key)
+
+    try:
+        return call_openrouter_model(
+            DEFAULT_OPENROUTER_MODEL,
+            messages,
+            api_key,
+            temperature,
+            max_tokens,
+        )
+    except OpenRouterCallError as error:
+        reason = safe_openrouter_error(error)
+        logger.warning("DeepSeek OpenRouter call failed; trying fallback. reason=%s", reason)
+        st.warning(f"DeepSeek 호출 실패로 fallback 모델을 시도합니다. 원인: {reason}")
+
+    try:
+        return call_openrouter_model(
+            FALLBACK_OPENROUTER_MODEL,
+            messages,
+            api_key,
+            temperature,
+            max_tokens,
+        )
+    except OpenRouterCallError as error:
+        logger.error("OpenRouter fallback call failed. reason=%s", safe_openrouter_error(error))
+        st.error("현재 답변 생성에 실패했습니다.")
+        return None
 
 
 def ask_llm(system_prompt: str, user_prompt: str, temperature: float = 0.15) -> Optional[str]:
-    client = get_client()
-    if client is None:
-        return None
-    try:
-        resp = client.chat.completions.create(
-            model=MODEL_NAME,
-            temperature=temperature,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
-        return (resp.choices[0].message.content or "").strip()
-    except Exception:
-        return None
+    return call_openrouter_with_fallback(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=temperature,
+        max_tokens=1800,
+    )
 
 
 
